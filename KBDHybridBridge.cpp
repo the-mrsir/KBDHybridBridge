@@ -28,6 +28,7 @@ namespace KBDHybridBridge
     static bool enabled = true;
     static bool debug = true;
     static int scan_every_seconds = 1;
+    static bool inventory_reins_fallback = false;
     static int seconds_since_scan = 0;
     static std::vector<Mapping> mappings;
 
@@ -106,9 +107,29 @@ namespace KBDHybridBridge
         return item_class.find("ValyrianReins") != std::string::npos;
     }
 
-    // Supports both:
-    // 1) Reins equipped directly in the creature costume slot.
-    // 2) Reins used as the skin on an equipped saddle.
+    UPrimalItem* MatchReins(UPrimalItem* item, const char* source)
+    {
+        if (!item)
+            return nullptr;
+
+        if (IsValyrianReinsItem(item))
+        {
+            WriteLog(std::string("[REINS] found directly in ") + source + ": " + ClassName(item));
+            return item;
+        }
+
+        UPrimalItem* skin = item->MyItemSkinField();
+        if (IsValyrianReinsItem(skin))
+        {
+            WriteLog(std::string("[REINS] found as skin in ") + source + ": " + ClassName(skin));
+            return skin;
+        }
+
+        return nullptr;
+    }
+
+    // ASE keeps equipment, slots/costumes, and ordinary inventory in separate arrays.
+    // v0.3 only looked at EquippedItems, which can miss creature costume-slot items.
     UPrimalItem* FindValyrianReins(APrimalDinoCharacter* dino)
     {
         if (!dino)
@@ -118,18 +139,44 @@ namespace KBDHybridBridge
         if (!inv)
             return nullptr;
 
+        // Normal equipped items (saddles, armor, etc.)
         auto equipped = inv->EquippedItemsField();
         for (UPrimalItem* item : equipped)
+        {
+            if (auto* found = MatchReins(item, "EquippedItems"))
+                return found;
+        }
+
+        // Creature costume/slot items can live here instead of EquippedItems.
+        auto slots = inv->ItemSlotsField();
+        for (UPrimalItem* item : slots)
+        {
+            if (auto* found = MatchReins(item, "ItemSlots"))
+                return found;
+        }
+
+        // Diagnostic/fallback path. Disabled by default because a loose Reins item
+        // sitting in normal inventory should not count as equipped.
+        auto inventory = inv->InventoryItemsField();
+        for (UPrimalItem* item : inventory)
         {
             if (!item)
                 continue;
 
             if (IsValyrianReinsItem(item))
-                return item;
+            {
+                WriteLog("[REINS] Reins exists in InventoryItems: " + ClassName(item));
+                if (inventory_reins_fallback)
+                    return item;
+            }
 
             UPrimalItem* skin = item->MyItemSkinField();
             if (IsValyrianReinsItem(skin))
-                return skin;
+            {
+                WriteLog("[REINS] Reins skin exists on InventoryItems item: " + ClassName(item));
+                if (inventory_reins_fallback)
+                    return skin;
+            }
         }
 
         return nullptr;
@@ -284,6 +331,7 @@ namespace KBDHybridBridge
         enabled = cfg.value("Enabled", true);
         debug = cfg.value("Debug", true);
         scan_every_seconds = std::max(1, cfg.value("ScanEverySeconds", 1));
+        inventory_reins_fallback = cfg.value("InventoryReinsFallback", false);
 
         std::vector<Mapping> new_mappings;
 

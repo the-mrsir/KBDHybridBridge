@@ -20,5 +20,6 @@
         }
       ]
     }
-  ]
+  ],
+  "InventoryReinsFallback": false
 }

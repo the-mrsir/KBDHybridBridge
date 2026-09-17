@@ -1,4 +1,4 @@
-# KBDHybridBridge v0.3 (ASE ArkApi)
+# KBDHybridBridge v0.4 (ASE ArkApi)
 
 This is a server-side compatibility bridge for:
 
@@ -209,3 +209,38 @@ For another Sid hybrid:
 6. Reload the bridge.
 
 No DLL recompile is required for new config-only mappings.
+
+
+## v0.4 costume-slot detection fix
+
+The first live automatic test showed an Argentjara with Valyrian Reins visibly in the creature Costume slot but neither parent Reins buff was applied.
+
+v0.3 only searched `UPrimalInventoryComponent.EquippedItems`.
+
+ASE exposes `EquippedItems`, `ItemSlots`, and `InventoryItems` separately. v0.4 now checks:
+
+1. `EquippedItems` — direct Reins or Reins skin on an equipped item.
+2. `ItemSlots` — direct Reins or Reins skin; this is the new path intended to catch creature Costume-slot equipment.
+3. `InventoryItems` — diagnostic only by default.
+
+The log will now say where the Reins were found, for example:
+
+    [REINS] found directly in ItemSlots: PrimalItemCostume_ValyrianReins_C
+
+If the server still shows no parent buffs, inspect:
+
+    ArkApi/Plugins/KBDHybridBridge/KBDHybridBridge.log
+
+If the log says:
+
+    [REINS] Reins exists in InventoryItems: ...
+
+but never finds it in EquippedItems or ItemSlots, temporarily set:
+
+    "InventoryReinsFallback": true
+
+in config.json and run:
+
+    KBDHybridBridge.Reload
+
+That fallback is ONLY for diagnosis because a loose Reins item sitting in the dino's inventory would then count as equipped.
