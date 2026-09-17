@@ -58,7 +58,16 @@ namespace KBDHybridBridge
 
     static std::unordered_map<std::string, ParentProfile> parent_profiles;
     static std::vector<HybridMapping> mappings;
-    static std::unordered_map<APrimalDinoCharacter*, bool> mounted_weapon_originals;
+
+    struct MountedWeaponState
+    {
+        bool allow;
+        bool prevent_all;
+        bool prevent_on_reequip;
+    };
+
+    static std::unordered_map<APrimalDinoCharacter*, MountedWeaponState>
+        mounted_weapon_originals;
 
     std::string PluginDir()
     {
@@ -479,6 +488,9 @@ namespace KBDHybridBridge
         bool should_allow
     )
     {
+        if (!dino)
+            return;
+
         auto tracked = mounted_weapon_originals.find(dino);
 
         if (should_allow)
@@ -487,15 +499,30 @@ namespace KBDHybridBridge
             {
                 tracked = mounted_weapon_originals.emplace(
                     dino,
-                    dino->bAllowMountedWeaponry().Get()
+                    MountedWeaponState{
+                        dino->bAllowMountedWeaponry().Get(),
+                        dino->bPreventAllRiderWeapons().Get(),
+                        dino->bPreventAllRiderWeaponsOnReequip().Get()
+                    }
                 ).first;
             }
 
-            if (!dino->bAllowMountedWeaponry().Get())
+            const bool needs_update =
+                !dino->bAllowMountedWeaponry().Get() ||
+                dino->bPreventAllRiderWeapons().Get() ||
+                dino->bPreventAllRiderWeaponsOnReequip().Get();
+
+            if (needs_update)
             {
                 dino->bAllowMountedWeaponry().Set(true);
+                dino->bPreventAllRiderWeapons().Set(false);
+                dino->bPreventAllRiderWeaponsOnReequip().Set(false);
                 dino->ForceNetUpdate(false, true, false);
-                WriteLog("[WEAPONS] enabled for " + ClassName(dino), true);
+                WriteLog(
+                    "[WEAPONS] enabled and rider-weapon blocks cleared for " +
+                    ClassName(dino),
+                    true
+                );
             }
 
             return;
@@ -504,10 +531,20 @@ namespace KBDHybridBridge
         if (tracked == mounted_weapon_originals.end())
             return;
 
-        const bool original = tracked->second;
-        if (dino->bAllowMountedWeaponry().Get() != original)
+        const MountedWeaponState original = tracked->second;
+        const bool needs_restore =
+            dino->bAllowMountedWeaponry().Get() != original.allow ||
+            dino->bPreventAllRiderWeapons().Get() != original.prevent_all ||
+            dino->bPreventAllRiderWeaponsOnReequip().Get() !=
+                original.prevent_on_reequip;
+
+        if (needs_restore)
         {
-            dino->bAllowMountedWeaponry().Set(original);
+            dino->bAllowMountedWeaponry().Set(original.allow);
+            dino->bPreventAllRiderWeapons().Set(original.prevent_all);
+            dino->bPreventAllRiderWeaponsOnReequip().Set(
+                original.prevent_on_reequip
+            );
             dino->ForceNetUpdate(false, true, false);
             WriteLog("[WEAPONS] restored for " + ClassName(dino), true);
         }
@@ -1699,7 +1736,7 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().AddChatCommand("/kbddump", &ChatDumpReins);
         ArkApi::GetCommands().AddChatCommand("/kbdhybrids", &ChatDumpHybrids);
 
-        WriteLog("[LOAD] KBDHybridBridge v1.4 loaded", true);
+        WriteLog("[LOAD] KBDHybridBridge v1.5 loaded", true);
     }
 
     void Unload()

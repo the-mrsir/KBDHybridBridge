@@ -1,7 +1,7 @@
 {
   "FullName": "KBD Hybrid Bridge",
-  "Description": "KBD/Sid hybrid compatibility bridge with Tapejara-parent rider weaponry.",
-  "Version": 1.4,
+  "Description": "KBD/Sid hybrid compatibility bridge with complete Tapejara-parent rider weapon support.",
+  "Version": 1.5,
   "MinApiVersion": 3.5,
   "Dependencies": []
 }

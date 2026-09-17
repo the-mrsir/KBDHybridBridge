@@ -1,4 +1,4 @@
-# KBDHybridBridge v1.4 (ASE ArkApi)
+# KBDHybridBridge v1.5 (ASE ArkApi)
 
 v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
@@ -97,13 +97,9 @@ ArkAPI automatic reloading will replace the live plugin without a full Fjordur r
 
 ## Important: mounted weapons and other creature-side abilities
 
-This release handles the actual KBD Reins buffs.
-
-It does NOT yet force blueprint-level capabilities that the buff alone cannot provide.
-The known example is Tapejara's "rider can use mounted weaponry": Argentjara gets
-`Buff_ValyrianReins_Tapejara_C`, but Sid's mount still blocks weapon use.
-
-That capability needs a separate safe rider/mount hook and is intentionally not faked in v0.7.
+The bridge handles the KBD Reins buffs and the Tapejara parent profile's mounted
+weapon capability. Other blueprint-level creature abilities may still require
+separate compatibility handling.
 
 ## Non-Reins KBD base buffs
 
@@ -267,3 +263,10 @@ to replicate so the rider can equip and fire handheld weapons.
 When the Reins are removed, the bridge restores the dino's original mounted-weapon
 setting. The original setting is also restored if the mapping is removed, the plugin
 is disabled, or the plugin unloads.
+
+## v1.5 — clear Sid's rider-weapon blocks
+
+Argentjara can retain `bPreventAllRiderWeapons` and
+`bPreventAllRiderWeaponsOnReequip` even after mounted weaponry is allowed. While
+Tapejara Reins support is active, v1.5 now enables `bAllowMountedWeaponry` and clears
+both blocking flags. All three original values are restored when support is removed.
