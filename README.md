@@ -1,79 +1,71 @@
-# KBDHybridBridge v0.5 (ASE ArkApi)
+# KBDHybridBridge v0.6 (ASE ArkApi)
 
-This build is a performance cleanup plus a costume-slot detection fix.
+## What the server log proved
 
-## Why v0.4 could lag
+The uploaded log exposed two separate bugs in the older builds.
 
-The old build did three expensive things every second:
+### v0.4 actually DID detect the Reins correctly
 
-1. Scanned every live dino in the world.
-2. Searched the entire Unreal object table again for each configured buff.
-3. Wrote repeated "Reins found" messages to disk.
+The log contained:
 
-v0.5 changes that:
+    [REINS] found directly in EquippedItems: PrimalItemCostume_ValyrianReins_C
 
-- Default scan interval is 5 seconds.
-- Buff and dino UClass pointers are resolved once at config load/reload and cached.
-- Mapped dino matching uses a hash lookup.
-- Repeated item-detection logging is removed.
-- Debug logging defaults to false.
+So the Argentjara Costume slot is visible through `EquippedItems`.
+The problem was never the costume-slot detection.
 
-## Costume-slot detection
+### v0.4 failed to resolve the KBD generated classes
 
-ASE exposes InventoryItems, EquippedItems, and ItemSlots separately.
+It repeatedly logged:
 
-v0.5 checks:
-- EquippedItems
-- ItemSlots
-- InventoryItems
+    [WARN] Buff class not loaded/found: Buff_ValyrianReins_Argent_C
+    [WARN] Buff class not loaded/found: Buff_ValyrianReins_Tapejara_C
 
-For InventoryItems, a direct Valyrian Reins item only counts when ARK marks it as equipped (`bEquippedItem`) or it is skinned onto another item. This is intended to catch the dino Costume slot without treating loose Reins in inventory as active.
+The old `FindLoadedClass` assumed the generated class's own meta-class had the literal name
+`Class`. That assumption is invalid for KBD's generated blueprint classes on this server.
 
-## Current mapping
+### v0.5 introduced a second load-order bug
 
-Argentjara receives both proven parent-specific KBD Reins buffs while Reins are equipped:
+Its final startup log was:
 
-- Buff_ValyrianReins_Argent_C
-- Buff_ValyrianReins_Tapejara_C
+    [WARN] Dino class not loaded/found: Argentjara_Character_BP_C
+    [CONFIG] loaded 0 hybrid mappings
+    [LOAD] KBDHybridBridge v0.5 loaded
 
-## Hot reload
+v0.5 tried to resolve the Sid hybrid UClass at plugin startup. At that point in the server
+startup sequence, the Argentjara class was not available to that lookup, so v0.5 threw away
+the mapping entirely.
 
-With ArkAPI automatic plugin reloading already enabled:
+## v0.6 fixes
 
-1. Build the new DLL.
-2. Upload it next to the live plugin as:
-
-   KBDHybridBridge.dll.ArkApi
-
-3. Wait for ArkAPI to consume the `.ArkApi` replacement.
-4. No full server restart is required.
+- Never throws away a mapping just because the Sid class is unavailable at plugin startup.
+- Matches mappings against the actual class of live dinos.
+- Lazily resolves KBD buff classes only when a matching hybrid with Reins actually needs one.
+- Class resolution accepts the exact generated-class object OR a live instance's ClassField.
+- Once a buff UClass is resolved, it is cached.
+- KBD class lookup warnings are emitted once, not on every scan.
+- Uses the proven `EquippedItems` Costume-slot path first.
+- Keeps the lower-overhead 5-second scan interval.
 
 ## Test
 
-With Valyrian Reins in the Argentjara Costume slot, wait up to 5 seconds then:
+Hot-reload the compiled v0.6 DLL.
+
+With Reins already in the Argentjara Costume slot, wait up to 5 seconds, then:
 
     cheat ListMyBuffs
 
 Expected:
-- Buff_ValyrianReins_Argent_C_#
-- Buff_ValyrianReins_Tapejara_C_#
 
-Remove the Reins, wait up to 5 seconds, and those two injected buffs should disappear.
+    Buff_ValyrianReins_Argent_C_#
+    Buff_ValyrianReins_Tapejara_C_#
 
-## Immediate rollback if a test build causes lag
+The plugin log should show:
 
-Edit plugin config.json:
+    [CONFIG] loaded 1 hybrid mappings
+    [LOAD] KBDHybridBridge v0.6 loaded
+    [RESOLVE] Buff_ValyrianReins_Argent_C
+    [RESOLVE] Buff_ValyrianReins_Tapejara_C
+    [ADD] ... <- Buff_ValyrianReins_Argent_C
+    [ADD] ... <- Buff_ValyrianReins_Tapejara_C
 
-    "Enabled": false
-
-Then run:
-
-    KBDHybridBridge.Reload
-
-The timer remains registered, but the plugin immediately stops world scans and buff processing. No full server restart is needed.
-
-## Tuning
-
-After detection is confirmed, `ScanEverySeconds` can be raised to 10 or 15 for even lower overhead.
-
-A later version can move to inventory/equip hooks so no world polling is required at all.
+If it still cannot resolve a KBD class, send only the new tail of KBDHybridBridge.log.

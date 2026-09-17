@@ -3,7 +3,6 @@
 
 #include <fstream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 #include <algorithm>
 
@@ -17,6 +16,7 @@ namespace KBDHybridBridge
     {
         std::string name;
         UClass* cls = nullptr;
+        bool warned = false;
     };
 
     struct Rule
@@ -28,7 +28,6 @@ namespace KBDHybridBridge
     struct Mapping
     {
         std::string dino_class_name;
-        UClass* dino_class = nullptr;
         std::vector<Rule> rules;
     };
 
@@ -38,9 +37,7 @@ namespace KBDHybridBridge
     static bool debug = false;
     static int scan_every_seconds = 5;
     static int seconds_since_scan = 0;
-
     static std::vector<Mapping> mappings;
-    static std::unordered_map<UClass*, size_t> mapping_by_class;
 
     std::string PluginDir()
     {
@@ -79,12 +76,23 @@ namespace KBDHybridBridge
         return ObjectName(obj->ClassField());
     }
 
-    // EXPENSIVE lookup. v0.5 only calls this at config load/reload,
-    // never once-per-dino / once-per-scan.
+    /*
+      v0.6 FIX:
+      Older builds required the matched class object's metaclass name to equal
+      exactly "Class". KBD BlueprintGeneratedClass objects do not satisfy that
+      assumption on this server, which is why the log repeatedly said:
+        Buff class not loaded/found: Buff_ValyrianReins_Argent_C
+
+      We now:
+        1) accept the exact class object name when found, OR
+        2) use the ClassField of any live instance whose class has that name.
+      Resolution is lazy and then cached; it is NOT done every scan.
+    */
     UClass* FindLoadedClass(const std::string& short_name)
     {
         auto& objects = Globals::GUObjectArray()();
 
+        // First pass: exact generated class object.
         for (int i = 0; i < objects.ObjObjects.NumElements; ++i)
         {
             auto* item = objects.ObjObjects.GetObjectPtr(i);
@@ -92,12 +100,22 @@ namespace KBDHybridBridge
                 continue;
 
             UObject* obj = item->Object;
+            if (ObjectName(obj) == short_name)
+                return reinterpret_cast<UClass*>(obj);
+        }
 
-            if (ObjectName(obj) != short_name)
+        // Second pass: live/default instance whose ClassField is the class wanted.
+        for (int i = 0; i < objects.ObjObjects.NumElements; ++i)
+        {
+            auto* item = objects.ObjObjects.GetObjectPtr(i);
+            if (!item || !item->Object)
                 continue;
 
-            if (obj->ClassField() && ObjectName(obj->ClassField()) == "Class")
-                return reinterpret_cast<UClass*>(obj);
+            UObject* obj = item->Object;
+            UClass* cls = obj->ClassField();
+
+            if (cls && ObjectName(cls) == short_name)
+                return cls;
         }
 
         return nullptr;
@@ -105,34 +123,17 @@ namespace KBDHybridBridge
 
     bool IsValyrianReinsItem(UPrimalItem* item)
     {
-        if (!item)
-            return false;
-
-        const auto item_class = ClassName(item);
-        return item_class.find("ValyrianReins") != std::string::npos;
+        return item && ClassName(item).find("ValyrianReins") != std::string::npos;
     }
 
-    UPrimalItem* MatchDirectOrSkin(UPrimalItem* item)
-    {
-        if (!item)
-            return nullptr;
+    /*
+      The user's v0.4 log proved the Costume-slot Reins are exposed by ASE as:
+        [REINS] found directly in EquippedItems:
+        PrimalItemCostume_ValyrianReins_C
 
-        if (IsValyrianReinsItem(item))
-            return item;
-
-        UPrimalItem* skin = item->MyItemSkinField();
-        if (IsValyrianReinsItem(skin))
-            return skin;
-
-        return nullptr;
-    }
-
-    // v0.5:
-    // - EquippedItems and ItemSlots first.
-    // - Then InventoryItems, but ONLY if ARK marks the Reins item equipped,
-    //   or the Reins is actually skinned onto another item.
-    // This is intended to catch dino Costume-slot equipment without treating
-    // a loose Reins item in inventory as active.
+      So v0.6 intentionally uses the proven path first and avoids scanning
+      all ordinary inventory items.
+    */
     UPrimalItem* FindValyrianReins(APrimalDinoCharacter* dino)
     {
         if (!dino)
@@ -144,30 +145,52 @@ namespace KBDHybridBridge
 
         for (UPrimalItem* item : inv->EquippedItemsField())
         {
-            if (auto* found = MatchDirectOrSkin(item))
-                return found;
+            if (!item)
+                continue;
+
+            if (IsValyrianReinsItem(item))
+                return item;
+
+            UPrimalItem* skin = item->MyItemSkinField();
+            if (IsValyrianReinsItem(skin))
+                return skin;
         }
 
+        // Keep ItemSlots as a secondary compatibility path for unusual slot layouts.
         for (UPrimalItem* item : inv->ItemSlotsField())
-        {
-            if (auto* found = MatchDirectOrSkin(item))
-                return found;
-        }
-
-        for (UPrimalItem* item : inv->InventoryItemsField())
         {
             if (!item)
                 continue;
 
             if (IsValyrianReinsItem(item))
-            {
-                if (item->bEquippedItem().Get())
-                    return item;
-            }
+                return item;
 
             UPrimalItem* skin = item->MyItemSkinField();
             if (IsValyrianReinsItem(skin))
                 return skin;
+        }
+
+        return nullptr;
+    }
+
+    UClass* ResolveBuff(BuffSpec& spec)
+    {
+        if (spec.cls)
+            return spec.cls;
+
+        spec.cls = FindLoadedClass(spec.name);
+
+        if (spec.cls)
+        {
+            WriteLog("[RESOLVE] " + spec.name, true);
+            spec.warned = false;
+            return spec.cls;
+        }
+
+        if (!spec.warned)
+        {
+            WriteLog("[WARN] Buff class not loaded/found: " + spec.name, true);
+            spec.warned = true;
         }
 
         return nullptr;
@@ -181,16 +204,17 @@ namespace KBDHybridBridge
         return dino->GetBuff(TSubclassOf<APrimalBuff>(buff_class));
     }
 
-    bool ApplyBuff(APrimalDinoCharacter* dino, const BuffSpec& buff, UPrimalItem* associated_item)
+    bool ApplyBuff(APrimalDinoCharacter* dino, BuffSpec& buff, UPrimalItem* associated_item)
     {
-        if (!buff.cls)
+        UClass* cls = ResolveBuff(buff);
+        if (!cls)
             return false;
 
-        if (GetBuff(dino, buff.cls))
+        if (GetBuff(dino, cls))
             return true;
 
         APrimalBuff* added = APrimalBuff::StaticAddBuff(
-            TSubclassOf<APrimalBuff>(buff.cls),
+            TSubclassOf<APrimalBuff>(cls),
             dino,
             associated_item,
             dino,
@@ -207,12 +231,13 @@ namespace KBDHybridBridge
         return false;
     }
 
-    void RemoveBuff(APrimalDinoCharacter* dino, const BuffSpec& buff)
+    void RemoveBuff(APrimalDinoCharacter* dino, BuffSpec& buff)
     {
-        if (!buff.cls)
-            return;
+        UClass* cls = buff.cls;
+        if (!cls)
+            return; // don't force a global lookup just to remove something never added
 
-        APrimalBuff* active = GetBuff(dino, buff.cls);
+        APrimalBuff* active = GetBuff(dino, cls);
         if (!active)
             return;
 
@@ -220,7 +245,7 @@ namespace KBDHybridBridge
         active->Deactivate();
     }
 
-    void ProcessRule(APrimalDinoCharacter* dino, const Rule& rule)
+    void ProcessRule(APrimalDinoCharacter* dino, Rule& rule)
     {
         bool active = false;
         UPrimalItem* associated_item = nullptr;
@@ -239,7 +264,7 @@ namespace KBDHybridBridge
             return;
         }
 
-        for (const auto& buff : rule.buffs)
+        for (auto& buff : rule.buffs)
         {
             if (active)
                 ApplyBuff(dino, buff, associated_item);
@@ -250,24 +275,25 @@ namespace KBDHybridBridge
 
     void ProcessDino(APrimalDinoCharacter* dino)
     {
-        if (!dino)
+        if (!dino || !dino->ClassField())
             return;
 
-        auto it = mapping_by_class.find(dino->ClassField());
-        if (it == mapping_by_class.end())
+        const std::string actual_class = ObjectName(dino->ClassField());
+
+        for (auto& mapping : mappings)
+        {
+            // v0.6: do NOT require the Sid UClass to exist when the plugin first loads.
+            // Match against the actual live dino class instead.
+            if (mapping.dino_class_name != actual_class)
+                continue;
+
+            for (auto& rule : mapping.rules)
+                ProcessRule(dino, rule);
+
             return;
-
-        Mapping& mapping = mappings[it->second];
-
-        for (const auto& rule : mapping.rules)
-            ProcessRule(dino, rule);
+        }
     }
 
-    // Still a world scan, but:
-    // - defaults to once every 5 seconds rather than every second;
-    // - class matching is O(1);
-    // - buff UClass lookups are cached;
-    // - no repeated "reins found" disk logging.
     void Scan()
     {
         if (!enabled || mappings.empty())
@@ -286,10 +312,8 @@ namespace KBDHybridBridge
 
         for (AActor* actor : actors)
         {
-            if (!actor)
-                continue;
-
-            ProcessDino(static_cast<APrimalDinoCharacter*>(actor));
+            if (actor)
+                ProcessDino(static_cast<APrimalDinoCharacter*>(actor));
         }
     }
 
@@ -324,16 +348,9 @@ namespace KBDHybridBridge
         {
             Mapping mapping;
             mapping.dino_class_name = jmap.value("DinoClass", "");
+
             if (mapping.dino_class_name.empty())
                 continue;
-
-            mapping.dino_class = FindLoadedClass(mapping.dino_class_name);
-
-            if (!mapping.dino_class)
-            {
-                WriteLog("[WARN] Dino class not loaded/found: " + mapping.dino_class_name, true);
-                continue;
-            }
 
             for (const auto& jrule : jmap.value("Rules", json::array()))
             {
@@ -344,14 +361,6 @@ namespace KBDHybridBridge
                 {
                     BuffSpec spec;
                     spec.name = jbuff.get<std::string>();
-                    spec.cls = FindLoadedClass(spec.name);
-
-                    if (!spec.cls)
-                    {
-                        WriteLog("[WARN] Buff class not loaded/found: " + spec.name, true);
-                        continue;
-                    }
-
                     rule.buffs.emplace_back(std::move(spec));
                 }
 
@@ -364,12 +373,8 @@ namespace KBDHybridBridge
         }
 
         mappings = std::move(new_mappings);
-
-        mapping_by_class.clear();
-        for (size_t i = 0; i < mappings.size(); ++i)
-            mapping_by_class[mappings[i].dino_class] = i;
-
         seconds_since_scan = 0;
+
         WriteLog("[CONFIG] loaded " + std::to_string(mappings.size()) + " hybrid mappings", true);
     }
 
@@ -379,6 +384,7 @@ namespace KBDHybridBridge
         {
             ReadConfig();
             Scan();
+            WriteLog("[RELOAD] config reloaded", true);
         }
         catch (const std::exception& e)
         {
@@ -389,6 +395,7 @@ namespace KBDHybridBridge
     void ScanCommand(APlayerController*, FString*, bool)
     {
         Scan();
+        WriteLog("[SCAN] manual scan complete", true);
     }
 
     void Load()
@@ -399,7 +406,7 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().AddConsoleCommand("KBDHybridBridge.Reload", &ReloadCommand);
         ArkApi::GetCommands().AddConsoleCommand("KBDHybridBridge.Scan", &ScanCommand);
 
-        WriteLog("[LOAD] KBDHybridBridge v0.5 loaded", true);
+        WriteLog("[LOAD] KBDHybridBridge v0.6 loaded", true);
     }
 
     void Unload()
