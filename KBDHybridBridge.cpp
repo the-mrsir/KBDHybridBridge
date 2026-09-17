@@ -17,17 +17,12 @@ namespace KBDHybridBridge
     using json = nlohmann::json;
 
     DECLARE_HOOK(
-        AShooterPlayerController_AdminCheat,
-        void,
-        AShooterPlayerController*,
-        FString*
-    );
-
-    DECLARE_HOOK(
-        AShooterPlayerController_Cheat,
-        void,
-        AShooterPlayerController*,
-        FString*
+        APlayerController_ConsoleCommand_KBD,
+        FString*,
+        APlayerController*,
+        FString*,
+        FString*,
+        bool
     );
 
     struct ParentProfile
@@ -156,31 +151,14 @@ namespace KBDHybridBridge
         return s.substr(first, last - first + 1);
     }
 
-    void TerminalReply(AShooterPlayerController* controller, const std::string& msg)
+    FString* SetConsoleResult(FString* result, const std::string& text)
     {
-        if (!controller)
-            return;
+        if (!result)
+            return result;
 
-        ArkApi::GetApiUtils().SendServerMessage(
-            controller,
-            FColorList::Green,
-            msg.c_str()
-        );
-    }
-
-    void RconReply(
-        RCONClientConnection* connection,
-        RCONPacket* packet,
-        const std::string& msg
-    )
-    {
-        if (!connection || !packet)
-            return;
-
-        const std::wstring wide = ArkApi::Tools::Utf8Decode(msg);
-        FString out(wide.c_str());
-
-        connection->SendMessageW(packet->Id, 0, &out);
+        const std::wstring wide = ArkApi::Tools::Utf8Decode(text);
+        *result = FString(wide.c_str());
+        return result;
     }
 
     bool StartsWith(const std::string& s, const std::string& prefix)
@@ -569,7 +547,7 @@ namespace KBDHybridBridge
         }
 
         const std::string header =
-            "KBDHybridBridge v1.0: found " +
+            "KBDHybridBridge v1.2: found " +
             std::to_string(found.size()) +
             " loaded Valyrian Reins buff classes.";
 
@@ -1018,6 +996,212 @@ namespace KBDHybridBridge
         return json::parse(kBuiltIn);
     }
 
+
+    std::string StatusText()
+    {
+        return
+            std::string("KBDHybridBridge v1.2 | Enabled=") +
+            (enabled ? "true" : "false") +
+            " | Scan=" +
+            std::to_string(scan_every_seconds) +
+            "s | Parents=" +
+            std::to_string(parent_profiles.size()) +
+            " | Hybrids=" +
+            std::to_string(mappings.size());
+    }
+
+    std::vector<std::string> GetLoadedReinsBuffNames()
+    {
+        std::set<std::string> found;
+        const std::string prefix = "buff_valyrianreins_";
+
+        auto& objects = Globals::GUObjectArray()();
+
+        for (int i = 0; i < objects.ObjObjects.NumElements; ++i)
+        {
+            auto* item = objects.ObjObjects.GetObjectPtr(i);
+            if (!item || !item->Object)
+                continue;
+
+            UObject* obj = item->Object;
+
+            if (obj->ClassField())
+            {
+                const std::string cls_name = ObjectName(obj->ClassField());
+                if (StartsWith(Lower(cls_name), prefix))
+                    found.insert(cls_name);
+            }
+
+            const std::string obj_name = ObjectName(obj);
+            if (StartsWith(Lower(obj_name), prefix) && EndsWith(obj_name, "_C"))
+                found.insert(obj_name);
+        }
+
+        return std::vector<std::string>(found.begin(), found.end());
+    }
+
+    std::vector<std::string> GetMatchedHybridLines()
+    {
+        std::vector<std::string> output;
+
+        UWorld* world = ArkApi::GetApiUtils().GetWorld();
+        if (!world)
+        {
+            output.emplace_back("World is not available.");
+            return output;
+        }
+
+        TArray<AActor*> actors;
+        UGameplayStatics::GetAllActorsOfClass(
+            reinterpret_cast<UObject*>(world),
+            APrimalDinoCharacter::GetPrivateStaticClass(),
+            &actors
+        );
+
+        std::set<std::string> logged;
+
+        for (AActor* actor : actors)
+        {
+            if (!actor)
+                continue;
+
+            auto* dino = static_cast<APrimalDinoCharacter*>(actor);
+            const std::string cls = ClassName(dino);
+
+            HybridMapping* mapping = MatchHybrid(cls);
+            if (!mapping)
+                continue;
+
+            const std::string key = cls + "|" + mapping->name;
+            if (!logged.insert(key).second)
+                continue;
+
+            std::ostringstream ss;
+            ss << cls << " -> " << mapping->name << " [";
+
+            for (size_t i = 0; i < mapping->parents.size(); ++i)
+            {
+                if (i)
+                    ss << ",";
+                ss << mapping->parents[i];
+            }
+
+            ss << "]";
+            output.emplace_back(ss.str());
+        }
+
+        if (output.empty())
+            output.emplace_back("No live mapped Sid hybrids found.");
+
+        return output;
+    }
+
+    bool BuildTerminalResponse(const std::string& raw, std::string& response)
+    {
+        std::string cmd = Lower(Trim(raw));
+
+        // Direct Tab-console commands. No cheat/admincheat prefix.
+        if (cmd == "kbd" || cmd == "kbd help")
+        {
+            response =
+                "KBD commands: kbd status | kbd reload | kbd scan | "
+                "kbd dump | kbd hybrids";
+            return true;
+        }
+
+        if (cmd == "kbd status" || cmd == "kbd.status" ||
+            cmd == "kbdhybridbridge.status")
+        {
+            response = StatusText();
+            return true;
+        }
+
+        if (cmd == "kbd reload" || cmd == "kbd.reload" ||
+            cmd == "kbdhybridbridge.reload")
+        {
+            try
+            {
+                ReadConfig();
+                Scan();
+
+                response =
+                    "Reloaded. Parents=" +
+                    std::to_string(parent_profiles.size()) +
+                    " Hybrids=" +
+                    std::to_string(mappings.size());
+            }
+            catch (const std::exception& e)
+            {
+                response = std::string("Reload failed: ") + e.what();
+            }
+
+            return true;
+        }
+
+        if (cmd == "kbd scan" || cmd == "kbd.scan" ||
+            cmd == "kbdhybridbridge.scan")
+        {
+            Scan();
+            response = "Manual hybrid scan complete.";
+            return true;
+        }
+
+        if (cmd == "kbd dump" || cmd == "kbd.dump" ||
+            cmd == "kbdhybridbridge.dumpreinsbuffs")
+        {
+            const auto names = GetLoadedReinsBuffNames();
+
+            std::ostringstream ss;
+            ss << "Loaded KBD Reins buffs: " << names.size();
+
+            for (const auto& name : names)
+                ss << "\n" << name;
+
+            response = ss.str();
+            return true;
+        }
+
+        if (cmd == "kbd hybrids" || cmd == "kbd.hybrids" ||
+            cmd == "kbdhybridbridge.dumpmatchedhybrids")
+        {
+            const auto lines = GetMatchedHybridLines();
+
+            std::ostringstream ss;
+            ss << "Matched live hybrid classes: " << lines.size();
+
+            for (const auto& line : lines)
+                ss << "\n" << line;
+
+            response = ss.str();
+            return true;
+        }
+
+        return false;
+    }
+
+    FString* Hook_APlayerController_ConsoleCommand_KBD(
+        APlayerController* controller,
+        FString* result,
+        FString* cmd,
+        bool write_to_log
+    )
+    {
+        std::string response;
+
+        if (BuildTerminalResponse(FStringToUtf8(cmd), response))
+        {
+            WriteLog("[TERMINAL] " + FStringToUtf8(cmd), true);
+            return SetConsoleResult(result, response);
+        }
+
+        return APlayerController_ConsoleCommand_KBD_original(
+            controller,
+            result,
+            cmd,
+            write_to_log
+        );
+    }
+
     void ReadConfig()
     {
         std::ifstream f(PluginDir() + "/config.json");
@@ -1128,306 +1312,6 @@ namespace KBDHybridBridge
         );
     }
 
-
-    std::string StatusText()
-    {
-        return
-            std::string("KBDHybridBridge v1.1 | Enabled=") +
-            (enabled ? "true" : "false") +
-            " | Scan=" +
-            std::to_string(scan_every_seconds) +
-            "s | Parents=" +
-            std::to_string(parent_profiles.size()) +
-            " | Hybrids=" +
-            std::to_string(mappings.size());
-    }
-
-    std::vector<std::string> DumpReinsBuffNames()
-    {
-        std::set<std::string> found;
-        const std::string prefix = "buff_valyrianreins_";
-
-        auto& objects = Globals::GUObjectArray()();
-
-        for (int i = 0; i < objects.ObjObjects.NumElements; ++i)
-        {
-            auto* item = objects.ObjObjects.GetObjectPtr(i);
-            if (!item || !item->Object)
-                continue;
-
-            UObject* obj = item->Object;
-
-            if (obj->ClassField())
-            {
-                const std::string cls_name = ObjectName(obj->ClassField());
-                if (StartsWith(Lower(cls_name), prefix))
-                    found.insert(cls_name);
-            }
-
-            const std::string obj_name = ObjectName(obj);
-            if (StartsWith(Lower(obj_name), prefix) && EndsWith(obj_name, "_C"))
-                found.insert(obj_name);
-        }
-
-        return std::vector<std::string>(found.begin(), found.end());
-    }
-
-    std::vector<std::string> MatchedHybridLines()
-    {
-        std::vector<std::string> output;
-
-        UWorld* world = ArkApi::GetApiUtils().GetWorld();
-        if (!world)
-        {
-            output.emplace_back("World is not available.");
-            return output;
-        }
-
-        TArray<AActor*> actors;
-        UGameplayStatics::GetAllActorsOfClass(
-            reinterpret_cast<UObject*>(world),
-            APrimalDinoCharacter::GetPrivateStaticClass(),
-            &actors
-        );
-
-        std::set<std::string> logged;
-
-        for (AActor* actor : actors)
-        {
-            if (!actor)
-                continue;
-
-            auto* dino = static_cast<APrimalDinoCharacter*>(actor);
-            const std::string cls = ClassName(dino);
-
-            HybridMapping* mapping = MatchHybrid(cls);
-            if (!mapping)
-                continue;
-
-            const std::string key = cls + "|" + mapping->name;
-            if (!logged.insert(key).second)
-                continue;
-
-            std::ostringstream ss;
-            ss << cls << " -> " << mapping->name << " [";
-
-            for (size_t i = 0; i < mapping->parents.size(); ++i)
-            {
-                if (i)
-                    ss << ",";
-                ss << mapping->parents[i];
-            }
-
-            ss << "]";
-            output.emplace_back(ss.str());
-        }
-
-        if (output.empty())
-            output.emplace_back("No live mapped Sid hybrids found.");
-
-        return output;
-    }
-
-    bool HandleKbdTerminalCommand(
-        AShooterPlayerController* controller,
-        const std::string& raw
-    )
-    {
-        std::string cmd = Lower(Trim(raw));
-
-        // Accept both "kbd status" and "kbd.status" styles after cheat/admincheat.
-        if (cmd == "kbd" || cmd == "kbd help")
-        {
-            TerminalReply(
-                controller,
-                "KBD commands: cheat kbd status | reload | scan | dump | hybrids"
-            );
-            return true;
-        }
-
-        if (cmd == "kbd status" || cmd == "kbd.status" ||
-            cmd == "kbdhybridbridge.status")
-        {
-            TerminalReply(controller, StatusText());
-            WriteLog("[TERMINAL] status", true);
-            return true;
-        }
-
-        if (cmd == "kbd reload" || cmd == "kbd.reload" ||
-            cmd == "kbdhybridbridge.reload")
-        {
-            try
-            {
-                ReadConfig();
-                Scan();
-
-                TerminalReply(
-                    controller,
-                    "KBDHybridBridge reloaded. Parents=" +
-                    std::to_string(parent_profiles.size()) +
-                    " Hybrids=" +
-                    std::to_string(mappings.size())
-                );
-
-                WriteLog("[TERMINAL] reload", true);
-            }
-            catch (const std::exception& e)
-            {
-                TerminalReply(
-                    controller,
-                    std::string("KBD reload failed: ") + e.what()
-                );
-            }
-
-            return true;
-        }
-
-        if (cmd == "kbd scan" || cmd == "kbd.scan" ||
-            cmd == "kbdhybridbridge.scan")
-        {
-            Scan();
-            TerminalReply(controller, "KBDHybridBridge manual scan complete.");
-            WriteLog("[TERMINAL] scan", true);
-            return true;
-        }
-
-        if (cmd == "kbd dump" || cmd == "kbd.dump" ||
-            cmd == "kbdhybridbridge.dumpreinsbuffs")
-        {
-            const auto names = DumpReinsBuffNames();
-
-            TerminalReply(
-                controller,
-                "Loaded KBD Reins buffs: " + std::to_string(names.size())
-            );
-
-            for (const auto& name : names)
-            {
-                TerminalReply(controller, name);
-                WriteLog("[DUMP] " + name, true);
-            }
-
-            return true;
-        }
-
-        if (cmd == "kbd hybrids" || cmd == "kbd.hybrids" ||
-            cmd == "kbdhybridbridge.dumpmatchedhybrids")
-        {
-            const auto lines = MatchedHybridLines();
-
-            for (const auto& line : lines)
-            {
-                TerminalReply(controller, line);
-                WriteLog("[MATCH] " + line, true);
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
-    void Hook_AShooterPlayerController_AdminCheat(
-        AShooterPlayerController* controller,
-        FString* msg
-    )
-    {
-        if (HandleKbdTerminalCommand(controller, FStringToUtf8(msg)))
-            return;
-
-        AShooterPlayerController_AdminCheat_original(controller, msg);
-    }
-
-    void Hook_AShooterPlayerController_Cheat(
-        AShooterPlayerController* controller,
-        FString* msg
-    )
-    {
-        if (HandleKbdTerminalCommand(controller, FStringToUtf8(msg)))
-            return;
-
-        AShooterPlayerController_Cheat_original(controller, msg);
-    }
-
-    void RconStatus(
-        RCONClientConnection* connection,
-        RCONPacket* packet,
-        UWorld*
-    )
-    {
-        RconReply(connection, packet, StatusText());
-    }
-
-    void RconReload(
-        RCONClientConnection* connection,
-        RCONPacket* packet,
-        UWorld*
-    )
-    {
-        try
-        {
-            ReadConfig();
-            Scan();
-
-            RconReply(
-                connection,
-                packet,
-                "Reloaded. Parents=" +
-                std::to_string(parent_profiles.size()) +
-                " Hybrids=" +
-                std::to_string(mappings.size())
-            );
-        }
-        catch (const std::exception& e)
-        {
-            RconReply(
-                connection,
-                packet,
-                std::string("Reload failed: ") + e.what()
-            );
-        }
-    }
-
-    void RconScan(
-        RCONClientConnection* connection,
-        RCONPacket* packet,
-        UWorld*
-    )
-    {
-        Scan();
-        RconReply(connection, packet, "Manual scan complete.");
-    }
-
-    void RconDump(
-        RCONClientConnection* connection,
-        RCONPacket* packet,
-        UWorld*
-    )
-    {
-        const auto names = DumpReinsBuffNames();
-
-        RconReply(
-            connection,
-            packet,
-            "Loaded KBD Reins buffs: " + std::to_string(names.size())
-        );
-
-        for (const auto& name : names)
-            RconReply(connection, packet, name);
-    }
-
-    void RconHybrids(
-        RCONClientConnection* connection,
-        RCONPacket* packet,
-        UWorld*
-    )
-    {
-        const auto lines = MatchedHybridLines();
-
-        for (const auto& line : lines)
-            RconReply(connection, packet, line);
-    }
-
     void ReloadCommand(APlayerController* controller, FString*, bool)
     {
         try
@@ -1436,7 +1320,7 @@ namespace KBDHybridBridge
             Scan();
 
             const std::string msg =
-                "KBDHybridBridge v1.0 reloaded: " +
+                "KBDHybridBridge v1.2 reloaded: " +
                 std::to_string(parent_profiles.size()) +
                 " parent profiles, " +
                 std::to_string(mappings.size()) +
@@ -1465,7 +1349,7 @@ namespace KBDHybridBridge
     void StatusCommand(APlayerController* controller, FString*, bool)
     {
         const std::string status =
-            std::string("KBDHybridBridge v1.0 | Enabled=") +
+            std::string("KBDHybridBridge v1.2 | Enabled=") +
             (enabled ? "true" : "false") +
             " | ScanEverySeconds=" +
             std::to_string(scan_every_seconds) +
@@ -1633,33 +1517,17 @@ namespace KBDHybridBridge
     {
         ReadConfig();
 
-        auto& hooks = ArkApi::GetHooks();
-
-        const bool admin_cheat_hook = hooks.SetHook(
-            "AShooterPlayerController.AdminCheat",
-            &Hook_AShooterPlayerController_AdminCheat,
-            &AShooterPlayerController_AdminCheat_original
-        );
-
-        const bool cheat_hook = hooks.SetHook(
-            "AShooterPlayerController.Cheat",
-            &Hook_AShooterPlayerController_Cheat,
-            &AShooterPlayerController_Cheat_original
+        const bool console_hook = ArkApi::GetHooks().SetHook(
+            "APlayerController.ConsoleCommand",
+            &Hook_APlayerController_ConsoleCommand_KBD,
+            &APlayerController_ConsoleCommand_KBD_original
         );
 
         WriteLog(
-            std::string("[HOOK] AdminCheat=") +
-            (admin_cheat_hook ? "OK" : "FAIL") +
-            " Cheat=" +
-            (cheat_hook ? "OK" : "FAIL"),
+            std::string("[HOOK] APlayerController.ConsoleCommand=") +
+            (console_hook ? "OK" : "FAIL"),
             true
         );
-
-        ArkApi::GetCommands().AddRconCommand("kbd.status", &RconStatus);
-        ArkApi::GetCommands().AddRconCommand("kbd.reload", &RconReload);
-        ArkApi::GetCommands().AddRconCommand("kbd.scan", &RconScan);
-        ArkApi::GetCommands().AddRconCommand("kbd.dump", &RconDump);
-        ArkApi::GetCommands().AddRconCommand("kbd.hybrids", &RconHybrids);
 
         ArkApi::GetCommands().AddOnTimerCallback(
             "KBDHybridBridge.Timer",
@@ -1697,7 +1565,7 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().AddChatCommand("/kbddump", &ChatDumpReins);
         ArkApi::GetCommands().AddChatCommand("/kbdhybrids", &ChatDumpHybrids);
 
-        WriteLog("[LOAD] KBDHybridBridge v1.1 loaded", true);
+        WriteLog("[LOAD] KBDHybridBridge v1.2 loaded", true);
     }
 
     void Unload()
@@ -1732,20 +1600,9 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().RemoveChatCommand("/kbddump");
         ArkApi::GetCommands().RemoveChatCommand("/kbdhybrids");
 
-        ArkApi::GetCommands().RemoveRconCommand("kbd.status");
-        ArkApi::GetCommands().RemoveRconCommand("kbd.reload");
-        ArkApi::GetCommands().RemoveRconCommand("kbd.scan");
-        ArkApi::GetCommands().RemoveRconCommand("kbd.dump");
-        ArkApi::GetCommands().RemoveRconCommand("kbd.hybrids");
-
         ArkApi::GetHooks().DisableHook(
-            "AShooterPlayerController.AdminCheat",
-            &Hook_AShooterPlayerController_AdminCheat
-        );
-
-        ArkApi::GetHooks().DisableHook(
-            "AShooterPlayerController.Cheat",
-            &Hook_AShooterPlayerController_Cheat
+            "APlayerController.ConsoleCommand",
+            &Hook_APlayerController_ConsoleCommand_KBD
         );
 
         WriteLog("[UNLOAD] KBDHybridBridge unloaded", true);

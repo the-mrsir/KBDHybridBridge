@@ -1,4 +1,4 @@
-# KBDHybridBridge v1.1 (ASE ArkApi)
+# KBDHybridBridge v1.2 (ASE ArkApi)
 
 v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
@@ -195,56 +195,44 @@ Expected roughly:
     KBDHybridBridge: v1.0 | Enabled=true | Scan=5s | Parents=13 | Hybrids=22
 
 
-## v1.1 — terminal commands fixed
+## v1.2 — direct Tab-console output
 
-Bare custom commands typed into the ARK client console do not reliably reach a server-side
-ArkApi plugin. v1.1 intercepts ARK's actual admin-cheat path instead.
+The previous attempt hooked `AdminCheat` / `Cheat`. Those hooks installed successfully,
+but typing `cheat kbd status` did not traverse that server path on this setup.
 
-After enabling cheats normally, open Tab and use:
+ArkApi itself processes in-game console commands by hooking:
 
-    cheat kbd status
-    cheat kbd reload
-    cheat kbd scan
-    cheat kbd dump
-    cheat kbd hybrids
+    APlayerController.ConsoleCommand
 
-`admincheat` should work too because it reaches the same server admin-cheat path.
+v1.2 hooks that exact function with its actual ASE signature and returns the diagnostic
+text as the console command's FString result. This means the result should appear in the
+same Tab console where the command is entered.
 
-The older long names are also accepted after `cheat`, for example:
+Use these DIRECTLY in the Tab console — NO `cheat` prefix:
 
-    cheat KBDHybridBridge.Status
+    kbd status
+    kbd reload
+    kbd scan
+    kbd dump
+    kbd hybrids
 
-v1.1 hooks both:
-- `AShooterPlayerController.AdminCheat`
-- `AShooterPlayerController.Cheat`
+Long aliases are also accepted:
 
-and only consumes commands beginning with the KBD command names. Normal ARK cheat commands
-are passed through untouched.
+    KBDHybridBridge.Status
+    KBDHybridBridge.Reload
+    KBDHybridBridge.Scan
+    KBDHybridBridge.DumpReinsBuffs
+    KBDHybridBridge.DumpMatchedHybrids
 
-### RCON / host terminal
+First test:
 
-v1.1 also registers:
+    kbd status
 
-    kbd.status
-    kbd.reload
-    kbd.scan
-    kbd.dump
-    kbd.hybrids
+Expected console result:
 
-as real ArkApi RCON commands. Those return output directly to the RCON client/host terminal.
+    KBDHybridBridge v1.2 | Enabled=true | Scan=5s | Parents=13 | Hybrids=22
 
-### First test
+The server log should also show:
 
-In ARK:
-
-    cheat kbd status
-
-Expected:
-
-    KBDHybridBridge v1.1 | Enabled=true | Scan=5s | Parents=13 | Hybrids=22
-
-Then:
-
-    cheat kbd dump
-
-to enumerate the loaded KBD Valyrian Reins buff classes.
+    [HOOK] APlayerController.ConsoleCommand=OK
+    [TERMINAL] kbd status
