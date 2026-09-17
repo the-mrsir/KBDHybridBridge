@@ -1,71 +1,112 @@
-# KBDHybridBridge v0.6 (ASE ArkApi)
+# KBDHybridBridge v0.7 (ASE ArkApi)
 
-## What the server log proved
+v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
-The uploaded log exposed two separate bugs in the older builds.
+## Proven behavior retained
 
-### v0.4 actually DID detect the Reins correctly
+Argentjara:
+- Argentavis -> `Buff_ValyrianReins_Argent_C`
+- Tapejara -> `Buff_ValyrianReins_Tapejara_C`
 
-The log contained:
+Both were manually proven on the live server:
+- appear automatically with actual Valyrian Reins equipped;
+- disappear after Reins are removed.
 
-    [REINS] found directly in EquippedItems: PrimalItemCostume_ValyrianReins_C
+## What v0.7 adds
 
-So the Argentjara Costume slot is visible through `EquippedItems`.
-The problem was never the costume-slot detection.
+The config now contains:
 
-### v0.4 failed to resolve the KBD generated classes
+- `ParentProfiles`: KBD Reins parent categories.
+- `Mappings`: Sid hybrid -> documented vanilla parents.
+- aliases for likely/internal Sid class naming differences.
+- lazy buff discovery for parent Reins classes that have not been manually verified yet.
+- on-demand diagnostic commands.
 
-It repeatedly logged:
+The bridge NEVER hard-codes stamina/speed multipliers. It injects KBD's actual Reins buff class.
 
-    [WARN] Buff class not loaded/found: Buff_ValyrianReins_Argent_C
-    [WARN] Buff class not loaded/found: Buff_ValyrianReins_Tapejara_C
+## Sid hybrids currently mapped
 
-The old `FindLoadedClass` assumed the generated class's own meta-class had the literal name
-`Class`. That assumption is invalid for KBD's generated blueprint classes on this server.
+- Argentjara -> Argent + Tapejara
+- Serpentmoloch -> Argent
+- Tropeocoatlus -> Quetz + Tropeognathus
+- Colossodraco -> Quetz
+- Gigadeisopteryx / Gigadeusopteryx -> Quetz
+- Wolf Wyvern -> Wyvern
+- Necro Wyvern -> Wyvern
+- Meteor Wyvern -> Wyvern
+- Plasma Wyvern -> Wyvern
+- Neoavirhinus -> Tropeognathus
+- Frostvarg -> Managarmr
+- Pelagosuchus -> Pelagornis
+- Pelosornis -> Pteranodon
+- Phalainasuchus -> Lymantria/Moth
+- Nyctavenator -> Wyvern
+- Vulcanotavis -> Argent
+- Magsuredrake -> Rock Drake + Wyvern
+- Glacialisvenator -> Managarmr + Snow Owl
+- Caelumlator -> Moth
+- Spinojalosaurus -> Tapejara
+- Aracnoptera -> Moth
+- Gigaplolophosaura -> Tapejara
 
-### v0.5 introduced a second load-order bug
+Only the Argent and Tapejara exact KBD buff class names are currently manually verified.
+All other profiles first try likely KBD class names and then search loaded KBD
+`Buff_ValyrianReins_*` classes by profile token. If a profile cannot be resolved,
+it safely skips that parent's buff and writes one `[UNRESOLVED]` line.
 
-Its final startup log was:
+## One command that should save a lot of manual testing
 
-    [WARN] Dino class not loaded/found: Argentjara_Character_BP_C
-    [CONFIG] loaded 0 hybrid mappings
-    [LOAD] KBDHybridBridge v0.5 loaded
+In the in-game console:
 
-v0.5 tried to resolve the Sid hybrid UClass at plugin startup. At that point in the server
-startup sequence, the Argentjara class was not available to that lookup, so v0.5 threw away
-the mapping entirely.
+    KBDHybridBridge.DumpReinsBuffs
 
-## v0.6 fixes
+This scans the Unreal object table ONCE, on demand, and writes every currently loaded:
 
-- Never throws away a mapping just because the Sid class is unavailable at plugin startup.
-- Matches mappings against the actual class of live dinos.
-- Lazily resolves KBD buff classes only when a matching hybrid with Reins actually needs one.
-- Class resolution accepts the exact generated-class object OR a live instance's ClassField.
-- Once a buff UClass is resolved, it is cached.
-- KBD class lookup warnings are emitted once, not on every scan.
-- Uses the proven `EquippedItems` Costume-slot path first.
-- Keeps the lower-overhead 5-second scan interval.
+    Buff_ValyrianReins_*_C
 
-## Test
+class to:
 
-Hot-reload the compiled v0.6 DLL.
+    ArkApi/Plugins/KBDHybridBridge/KBDHybridBridge.log
 
-With Reins already in the Argentjara Costume slot, wait up to 5 seconds, then:
+Run that once after hot-loading v0.7. The output will let us replace the remaining
+candidate guesses with exact class names in config.json.
 
-    cheat ListMyBuffs
+## See which live Sid creatures matched
 
-Expected:
+    KBDHybridBridge.DumpMatchedHybrids
 
-    Buff_ValyrianReins_Argent_C_#
-    Buff_ValyrianReins_Tapejara_C_#
+This writes each matched live creature class and the parent profiles assigned to it.
 
-The plugin log should show:
+That is useful if Sid's internal blueprint class name differs from the public hybrid name.
+Adding an alias is config-only; no DLL rebuild is needed.
 
-    [CONFIG] loaded 1 hybrid mappings
-    [LOAD] KBDHybridBridge v0.6 loaded
-    [RESOLVE] Buff_ValyrianReins_Argent_C
-    [RESOLVE] Buff_ValyrianReins_Tapejara_C
-    [ADD] ... <- Buff_ValyrianReins_Argent_C
-    [ADD] ... <- Buff_ValyrianReins_Tapejara_C
+## Performance
 
-If it still cannot resolve a KBD class, send only the new tail of KBDHybridBridge.log.
+- Same 5-second world scan that was lag-free in v0.6.
+- KBD class discovery happens only while a parent profile is first resolved and is cached.
+- The expensive global dump runs ONLY when you explicitly run `DumpReinsBuffs`.
+- No per-scan debug spam.
+
+## Hot update
+
+Compile v0.7 and upload the new DLL as:
+
+    KBDHybridBridge.dll.ArkApi
+
+ArkAPI automatic reloading will replace the live plugin without a full Fjordur restart.
+
+## Important: mounted weapons and other creature-side abilities
+
+This release handles the actual KBD Reins buffs.
+
+It does NOT yet force blueprint-level capabilities that the buff alone cannot provide.
+The known example is Tapejara's "rider can use mounted weaponry": Argentjara gets
+`Buff_ValyrianReins_Tapejara_C`, but Sid's mount still blocks weapon use.
+
+That capability needs a separate safe rider/mount hook and is intentionally not faked in v0.7.
+
+## Non-Reins KBD base buffs
+
+v0.7 does NOT blindly inject normal KBD creature buffs such as Raptor, Yuty, Rock Golem,
+etc. Those often contain species-specific blueprint assumptions. We should identify and
+test them individually before adding an `Always` parent-buff layer.

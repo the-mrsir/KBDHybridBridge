@@ -2,21 +2,360 @@
   "Enabled": true,
   "Debug": false,
   "ScanEverySeconds": 5,
+  "ParentProfiles": {
+    "Argent": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Argent_C"
+      ],
+      "DiscoveryTokens": [
+        "argent"
+      ],
+      "Verified": true
+    },
+    "Tapejara": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Tapejara_C"
+      ],
+      "DiscoveryTokens": [
+        "tapejara"
+      ],
+      "Verified": true
+    },
+    "Ptera": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Ptera_C",
+        "Buff_ValyrianReins_Ptero_C"
+      ],
+      "DiscoveryTokens": [
+        "ptera",
+        "ptero"
+      ],
+      "Verified": false
+    },
+    "Quetz": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Quetz_C"
+      ],
+      "DiscoveryTokens": [
+        "quetz"
+      ],
+      "Verified": false
+    },
+    "Moth": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Moth_C"
+      ],
+      "DiscoveryTokens": [
+        "moth",
+        "lymantria"
+      ],
+      "Verified": false
+    },
+    "Pela": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Pela_C",
+        "Buff_ValyrianReins_Pelagornis_C"
+      ],
+      "DiscoveryTokens": [
+        "pela",
+        "pelagornis"
+      ],
+      "Verified": false
+    },
+    "RockDrake": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_RockDrake_C",
+        "Buff_ValyrianReins_Drake_C"
+      ],
+      "DiscoveryTokens": [
+        "rockdrake",
+        "drake"
+      ],
+      "Verified": false
+    },
+    "Griffin": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Griffin_C"
+      ],
+      "DiscoveryTokens": [
+        "griffin"
+      ],
+      "Verified": false
+    },
+    "Owl": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Owl_C",
+        "Buff_ValyrianReins_SnowOwl_C"
+      ],
+      "DiscoveryTokens": [
+        "owl",
+        "snowowl"
+      ],
+      "Verified": false
+    },
+    "Managarmr": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Managarmr_C",
+        "Buff_ValyrianReins_Mana_C"
+      ],
+      "DiscoveryTokens": [
+        "managarmr",
+        "mana"
+      ],
+      "Verified": false
+    },
+    "GasBags": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_GasBags_C",
+        "Buff_ValyrianReins_Gasbag_C"
+      ],
+      "DiscoveryTokens": [
+        "gasbags",
+        "gasbag"
+      ],
+      "Verified": false
+    },
+    "Tropeognathus": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Tropeognathus_C",
+        "Buff_ValyrianReins_Tropeo_C"
+      ],
+      "DiscoveryTokens": [
+        "tropeognathus",
+        "tropeo"
+      ],
+      "Verified": false
+    },
+    "Wyvern": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Wyvern_C"
+      ],
+      "DiscoveryTokens": [
+        "wyvern"
+      ],
+      "Verified": false
+    }
+  },
   "Mappings": [
     {
-      "DinoClass": "Argentjara_Character_BP_C",
-      "Parents": [
-        "Argentavis",
-        "Tapejara"
+      "Name": "Argentjara",
+      "Aliases": [
+        "Argentjara",
+        "TapeArgent"
       ],
-      "Rules": [
-        {
-          "Trigger": "ValyrianReins",
-          "Buffs": [
-            "Buff_ValyrianReins_Argent_C",
-            "Buff_ValyrianReins_Tapejara_C"
-          ]
-        }
+      "Parents": [
+        "Argent",
+        "Tapejara"
+      ]
+    },
+    {
+      "Name": "Serpentmoloch",
+      "Aliases": [
+        "Serpentmoloch",
+        "Flyboa"
+      ],
+      "Parents": [
+        "Argent"
+      ]
+    },
+    {
+      "Name": "Tropeocoatlus",
+      "Aliases": [
+        "Tropeocoatlus",
+        "QuetzTrop"
+      ],
+      "Parents": [
+        "Quetz",
+        "Tropeognathus"
+      ]
+    },
+    {
+      "Name": "Colossodraco",
+      "Aliases": [
+        "Colossodraco",
+        "RockQuetz"
+      ],
+      "Parents": [
+        "Quetz"
+      ]
+    },
+    {
+      "Name": "Gigadeisopteryx",
+      "Aliases": [
+        "Gigadeisopteryx",
+        "Gigadeusopteryx",
+        "QuetzGiga"
+      ],
+      "Parents": [
+        "Quetz"
+      ]
+    },
+    {
+      "Name": "Wolf Wyvern",
+      "Aliases": [
+        "WolfWyvern",
+        "Wolf_Wyvern",
+        "Wolfwyv"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Necro Wyvern",
+      "Aliases": [
+        "NecroWyvern",
+        "Necro_Wyvern"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Meteor Wyvern",
+      "Aliases": [
+        "MeteorWyvern",
+        "Meteor_Wyvern"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Plasma Wyvern",
+      "Aliases": [
+        "PlasmaWyvern",
+        "Plasma_Wyvern"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Neoavirhinus",
+      "Aliases": [
+        "Neoavirhinus"
+      ],
+      "Parents": [
+        "Tropeognathus"
+      ]
+    },
+    {
+      "Name": "Frostvarg",
+      "Aliases": [
+        "Frostvarg",
+        "Frovarg"
+      ],
+      "Parents": [
+        "Managarmr"
+      ]
+    },
+    {
+      "Name": "Pelagosuchus",
+      "Aliases": [
+        "Pelagosuchus"
+      ],
+      "Parents": [
+        "Pela"
+      ]
+    },
+    {
+      "Name": "Pelosornis",
+      "Aliases": [
+        "Pelosornis"
+      ],
+      "Parents": [
+        "Ptera"
+      ]
+    },
+    {
+      "Name": "Phalainasuchus",
+      "Aliases": [
+        "Phalainasuchus"
+      ],
+      "Parents": [
+        "Moth"
+      ]
+    },
+    {
+      "Name": "Nyctavenator",
+      "Aliases": [
+        "Nyctavenator"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Vulcanotavis",
+      "Aliases": [
+        "Vulcanotavis",
+        "ArgentMagma"
+      ],
+      "Parents": [
+        "Argent"
+      ]
+    },
+    {
+      "Name": "Magsuredrake",
+      "Aliases": [
+        "Magsuredrake",
+        "Magsure"
+      ],
+      "Parents": [
+        "RockDrake",
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Glacialisvenator",
+      "Aliases": [
+        "Glacialisvenator",
+        "ManaYO"
+      ],
+      "Parents": [
+        "Managarmr",
+        "Owl"
+      ]
+    },
+    {
+      "Name": "Caelumlator",
+      "Aliases": [
+        "Caelumlator",
+        "Yomoth"
+      ],
+      "Parents": [
+        "Moth"
+      ]
+    },
+    {
+      "Name": "Spinojalosaurus",
+      "Aliases": [
+        "Spinojalosaurus",
+        "Spinotape"
+      ],
+      "Parents": [
+        "Tapejara"
+      ]
+    },
+    {
+      "Name": "Aracnoptera",
+      "Aliases": [
+        "Aracnoptera",
+        "SpiderMoth"
+      ],
+      "Parents": [
+        "Moth"
+      ]
+    },
+    {
+      "Name": "Gigaplolophosaura",
+      "Aliases": [
+        "Gigaplolophosaura",
+        "TapajaraHyb"
+      ],
+      "Parents": [
+        "Tapejara"
       ]
     }
   ]
