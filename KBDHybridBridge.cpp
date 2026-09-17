@@ -58,6 +58,7 @@ namespace KBDHybridBridge
 
     static std::unordered_map<std::string, ParentProfile> parent_profiles;
     static std::vector<HybridMapping> mappings;
+    static std::unordered_map<APrimalDinoCharacter*, bool> mounted_weapon_originals;
 
     std::string PluginDir()
     {
@@ -467,6 +468,81 @@ namespace KBDHybridBridge
         return nullptr;
     }
 
+    bool HasParent(const HybridMapping& mapping, const std::string& parent)
+    {
+        return std::find(mapping.parents.begin(), mapping.parents.end(), parent) !=
+               mapping.parents.end();
+    }
+
+    void UpdateTapejaraMountedWeaponry(
+        APrimalDinoCharacter* dino,
+        bool should_allow
+    )
+    {
+        auto tracked = mounted_weapon_originals.find(dino);
+
+        if (should_allow)
+        {
+            if (tracked == mounted_weapon_originals.end())
+            {
+                tracked = mounted_weapon_originals.emplace(
+                    dino,
+                    dino->bAllowMountedWeaponry().Get()
+                ).first;
+            }
+
+            if (!dino->bAllowMountedWeaponry().Get())
+            {
+                dino->bAllowMountedWeaponry().Set(true);
+                dino->ForceNetUpdate(false, true, false);
+                WriteLog("[WEAPONS] enabled for " + ClassName(dino), true);
+            }
+
+            return;
+        }
+
+        if (tracked == mounted_weapon_originals.end())
+            return;
+
+        const bool original = tracked->second;
+        if (dino->bAllowMountedWeaponry().Get() != original)
+        {
+            dino->bAllowMountedWeaponry().Set(original);
+            dino->ForceNetUpdate(false, true, false);
+            WriteLog("[WEAPONS] restored for " + ClassName(dino), true);
+        }
+
+        mounted_weapon_originals.erase(tracked);
+    }
+
+    void RestoreAllMountedWeaponry()
+    {
+        UWorld* world = ArkApi::GetApiUtils().GetWorld();
+        if (!world)
+        {
+            mounted_weapon_originals.clear();
+            return;
+        }
+
+        TArray<AActor*> actors;
+        UGameplayStatics::GetAllActorsOfClass(
+            reinterpret_cast<UObject*>(world),
+            APrimalDinoCharacter::GetPrivateStaticClass(),
+            &actors
+        );
+
+        for (AActor* actor : actors)
+        {
+            if (actor)
+                UpdateTapejaraMountedWeaponry(
+                    static_cast<APrimalDinoCharacter*>(actor),
+                    false
+                );
+        }
+
+        mounted_weapon_originals.clear();
+    }
+
     void ProcessDino(APrimalDinoCharacter* dino)
     {
         if (!dino || !dino->ClassField())
@@ -474,10 +550,18 @@ namespace KBDHybridBridge
 
         HybridMapping* mapping = MatchHybrid(ObjectName(dino->ClassField()));
         if (!mapping)
+        {
+            UpdateTapejaraMountedWeaponry(dino, false);
             return;
+        }
 
         UPrimalItem* reins = FindValyrianReins(dino);
         const bool reins_equipped = reins != nullptr;
+
+        UpdateTapejaraMountedWeaponry(
+            dino,
+            reins_equipped && HasParent(*mapping, "Tapejara")
+        );
 
         for (const auto& parent_name : mapping->parents)
         {
@@ -557,7 +641,7 @@ namespace KBDHybridBridge
         }
 
         const std::string header =
-            "KBDHybridBridge v1.3: found " +
+            "KBDHybridBridge v1.4: found " +
             std::to_string(found.size()) +
             " loaded Valyrian Reins buff classes.";
 
@@ -1011,7 +1095,7 @@ namespace KBDHybridBridge
     std::string StatusText()
     {
         return
-            std::string("KBDHybridBridge v1.3 | Enabled=") +
+            std::string("KBDHybridBridge v1.4 | Enabled=") +
             (enabled ? "true" : "false") +
             " | Scan=" +
             std::to_string(scan_every_seconds) +
@@ -1279,6 +1363,9 @@ namespace KBDHybridBridge
         debug = cfg.value("Debug", false);
         scan_every_seconds = std::max(1, cfg.value("ScanEverySeconds", 5));
 
+        if (!enabled)
+            RestoreAllMountedWeaponry();
+
         if (!has_new_profiles || !has_new_mappings)
         {
             WriteLog(
@@ -1357,7 +1444,7 @@ namespace KBDHybridBridge
             Scan();
 
             const std::string msg =
-                "KBDHybridBridge v1.3 reloaded: " +
+                "KBDHybridBridge v1.4 reloaded: " +
                 std::to_string(parent_profiles.size()) +
                 " parent profiles, " +
                 std::to_string(mappings.size()) +
@@ -1386,7 +1473,7 @@ namespace KBDHybridBridge
     void StatusCommand(APlayerController* controller, FString*, bool)
     {
         const std::string status =
-            std::string("KBDHybridBridge v1.3 | Enabled=") +
+            std::string("KBDHybridBridge v1.4 | Enabled=") +
             (enabled ? "true" : "false") +
             " | ScanEverySeconds=" +
             std::to_string(scan_every_seconds) +
@@ -1612,11 +1699,13 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().AddChatCommand("/kbddump", &ChatDumpReins);
         ArkApi::GetCommands().AddChatCommand("/kbdhybrids", &ChatDumpHybrids);
 
-        WriteLog("[LOAD] KBDHybridBridge v1.3 loaded", true);
+        WriteLog("[LOAD] KBDHybridBridge v1.4 loaded", true);
     }
 
     void Unload()
     {
+        RestoreAllMountedWeaponry();
+
         ArkApi::GetCommands().RemoveOnTimerCallback(
             "KBDHybridBridge.Timer"
         );

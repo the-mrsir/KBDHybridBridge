@@ -1,4 +1,4 @@
-# KBDHybridBridge v1.3 (ASE ArkApi)
+# KBDHybridBridge v1.4 (ASE ArkApi)
 
 v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
@@ -257,3 +257,13 @@ Enable cheats normally, then use the Tab terminal:
 `admincheat` and the long `KBDHybridBridge.*` aliases are also accepted. Commands are
 restricted to authenticated server admins, and results are returned through
 `ClientMessage` so they are written to the player's console.
+
+## v1.4 — Tapejara-parent rider weaponry
+
+While Valyrian Reins are equipped, mapped hybrids with the `Tapejara` parent profile
+now have `APrimalDinoCharacter.bAllowMountedWeaponry` enabled. The change is forced
+to replicate so the rider can equip and fire handheld weapons.
+
+When the Reins are removed, the bridge restores the dino's original mounted-weapon
+setting. The original setting is also restored if the mapping is removed, the plugin
+is disabled, or the plugin unloads.
