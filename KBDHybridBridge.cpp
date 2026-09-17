@@ -996,6 +996,7 @@ namespace KBDHybridBridge
         return json::parse(kBuiltIn);
     }
 
+    void ReadConfig();
 
     std::string StatusText()
     {
