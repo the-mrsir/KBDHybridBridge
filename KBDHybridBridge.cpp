@@ -161,10 +161,7 @@ namespace KBDHybridBridge
 
             if (IsValyrianReinsItem(item))
             {
-                const bool equipped = static_cast<bool>(item->bEquippedItem());
-                const bool skinned = item->SkinnedOntoItemField() != nullptr;
-
-                if (equipped || skinned)
+                if (item->bEquippedItem().Get())
                     return item;
             }
 
