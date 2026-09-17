@@ -1,0 +1,42 @@
+name: Build KBDHybridBridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout bridge
+        uses: actions/checkout@v4
+
+      - name: Checkout ASE Ark Server API
+        uses: actions/checkout@v4
+        with:
+          repository: ArkServerApi/AseApi
+          path: extern/AseApi
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release x64
+        shell: pwsh
+        run: msbuild KBDHybridBridge.sln /m /p:Configuration=Release /p:Platform=x64
+
+      - name: Package server plugin
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package/KBDHybridBridge | Out-Null
+          Copy-Item build/KBDHybridBridge.dll package/KBDHybridBridge/
+          Copy-Item PluginInfo.json package/KBDHybridBridge/
+          Copy-Item config.json package/KBDHybridBridge/
+          Compress-Archive -Path package/KBDHybridBridge -DestinationPath KBDHybridBridge-server.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KBDHybridBridge-server
+          path: KBDHybridBridge-server.zip

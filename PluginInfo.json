@@ -1,0 +1,7 @@
+{
+  "FullName": "KBD Hybrid Bridge",
+  "Description": "Bridges Kraken's Better Dinos buffs to configured Sid's Hybrids creatures using KBD's real buff classes.",
+  "Version": 0.3,
+  "MinApiVersion": 3.5,
+  "Dependencies": []
+}

@@ -1,0 +1,27 @@
+KBD Hybrid Bridge v0.2 - Argentjara dual-parent manual test
+
+While RIDING the Argentjara:
+
+cheat ForceGiveBuff Buff_Flyers 1
+cheat ForceGiveBuff Buff_Flyers_Tapejara 1
+cheat ForceGiveBuff Buff_ValyrianReins_Argent 1
+cheat ForceGiveBuff Buff_ValyrianReins_Tapejara 1
+cheat ListMyBuffs
+
+Expected KBD-related buffs:
+BD_BuffManager_C_#
+Buff_Flyers_C_#
+Buff_Flyers_Tapejara_C_#
+Buff_ValyrianReins_Argent_C_#
+Buff_ValyrianReins_Tapejara_C_#
+
+Then test:
+- stamina
+- forward flight speed
+- strafe/backwards flight
+- mounted weapon use
+- normal attacks / special attacks
+- landing / takeoff
+- removing the Reins
+
+This proves whether both parent buff stacks coexist correctly before making it automatic.

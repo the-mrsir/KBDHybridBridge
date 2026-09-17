@@ -1,0 +1,24 @@
+{
+  "Enabled": true,
+  "Debug": true,
+  "ScanEverySeconds": 1,
+  "Mappings": [
+    {
+      "DinoClass": "Argentjara_Character_BP_C",
+      "Parents": [
+        "Argentavis",
+        "Tapejara"
+      ],
+      "Rules": [
+        {
+          "Trigger": "ValyrianReins",
+          "Buffs": [
+            "Buff_ValyrianReins_Argent_C",
+            "Buff_ValyrianReins_Tapejara_C"
+          ],
+          "Comment": "Both buffs were manually proven to coexist on Argentjara. Base Buff_Flyers classes did not remain active, so they are intentionally excluded."
+        }
+      ]
+    }
+  ]
+}
