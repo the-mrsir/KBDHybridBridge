@@ -17,12 +17,17 @@ namespace KBDHybridBridge
     using json = nlohmann::json;
 
     DECLARE_HOOK(
-        APlayerController_ConsoleCommand_KBD,
-        FString*,
-        APlayerController*,
-        FString*,
-        FString*,
-        bool
+        ABasePlayerController_ServerCheat_Implementation_KBD,
+        void,
+        ABasePlayerController*,
+        FString*
+    );
+
+    DECLARE_HOOK(
+        AShooterPlayerController_ServerGlobalCommand_Implementation_KBD,
+        void,
+        AShooterPlayerController*,
+        FString*
     );
 
     struct ParentProfile
@@ -151,14 +156,19 @@ namespace KBDHybridBridge
         return s.substr(first, last - first + 1);
     }
 
-    FString* SetConsoleResult(FString* result, const std::string& text)
+    void SendTerminalReply(AShooterPlayerController* controller, const std::string& text)
     {
-        if (!result)
-            return result;
+        if (!controller)
+            return;
 
-        const std::wstring wide = ArkApi::Tools::Utf8Decode(text);
-        *result = FString(wide.c_str());
-        return result;
+        std::istringstream lines(text);
+        std::string line;
+
+        while (std::getline(lines, line))
+        {
+            FString message(ArkApi::Tools::Utf8Decode(line).c_str());
+            controller->ClientMessage(&message, FName(), 10.0f);
+        }
     }
 
     bool StartsWith(const std::string& s, const std::string& prefix)
@@ -547,7 +557,7 @@ namespace KBDHybridBridge
         }
 
         const std::string header =
-            "KBDHybridBridge v1.2: found " +
+            "KBDHybridBridge v1.3: found " +
             std::to_string(found.size()) +
             " loaded Valyrian Reins buff classes.";
 
@@ -1001,7 +1011,7 @@ namespace KBDHybridBridge
     std::string StatusText()
     {
         return
-            std::string("KBDHybridBridge v1.2 | Enabled=") +
+            std::string("KBDHybridBridge v1.3 | Enabled=") +
             (enabled ? "true" : "false") +
             " | Scan=" +
             std::to_string(scan_every_seconds) +
@@ -1180,26 +1190,52 @@ namespace KBDHybridBridge
         return false;
     }
 
-    FString* Hook_APlayerController_ConsoleCommand_KBD(
-        APlayerController* controller,
-        FString* result,
-        FString* cmd,
-        bool write_to_log
+    bool HandleServerTerminalCommand(
+        AShooterPlayerController* controller,
+        FString* command
     )
     {
+        if (!controller || !controller->bIsAdmin().Get())
+            return false;
+
         std::string response;
+        const std::string raw = FStringToUtf8(command);
 
-        if (BuildTerminalResponse(FStringToUtf8(cmd), response))
-        {
-            WriteLog("[TERMINAL] " + FStringToUtf8(cmd), true);
-            return SetConsoleResult(result, response);
-        }
+        if (!BuildTerminalResponse(raw, response))
+            return false;
 
-        return APlayerController_ConsoleCommand_KBD_original(
+        WriteLog("[TERMINAL] " + raw, true);
+        SendTerminalReply(controller, response);
+        return true;
+    }
+
+    void Hook_ABasePlayerController_ServerCheat_Implementation_KBD(
+        ABasePlayerController* controller,
+        FString* command
+    )
+    {
+        auto* shooter = static_cast<AShooterPlayerController*>(controller);
+
+        if (HandleServerTerminalCommand(shooter, command))
+            return;
+
+        ABasePlayerController_ServerCheat_Implementation_KBD_original(
             controller,
-            result,
-            cmd,
-            write_to_log
+            command
+        );
+    }
+
+    void Hook_AShooterPlayerController_ServerGlobalCommand_Implementation_KBD(
+        AShooterPlayerController* controller,
+        FString* command
+    )
+    {
+        if (HandleServerTerminalCommand(controller, command))
+            return;
+
+        AShooterPlayerController_ServerGlobalCommand_Implementation_KBD_original(
+            controller,
+            command
         );
     }
 
@@ -1321,7 +1357,7 @@ namespace KBDHybridBridge
             Scan();
 
             const std::string msg =
-                "KBDHybridBridge v1.2 reloaded: " +
+                "KBDHybridBridge v1.3 reloaded: " +
                 std::to_string(parent_profiles.size()) +
                 " parent profiles, " +
                 std::to_string(mappings.size()) +
@@ -1350,7 +1386,7 @@ namespace KBDHybridBridge
     void StatusCommand(APlayerController* controller, FString*, bool)
     {
         const std::string status =
-            std::string("KBDHybridBridge v1.2 | Enabled=") +
+            std::string("KBDHybridBridge v1.3 | Enabled=") +
             (enabled ? "true" : "false") +
             " | ScanEverySeconds=" +
             std::to_string(scan_every_seconds) +
@@ -1518,15 +1554,25 @@ namespace KBDHybridBridge
     {
         ReadConfig();
 
-        const bool console_hook = ArkApi::GetHooks().SetHook(
-            "APlayerController.ConsoleCommand",
-            &Hook_APlayerController_ConsoleCommand_KBD,
-            &APlayerController_ConsoleCommand_KBD_original
+        auto& hooks = ArkApi::GetHooks();
+
+        const bool server_cheat_hook = hooks.SetHook(
+            "ABasePlayerController.ServerCheat_Implementation",
+            &Hook_ABasePlayerController_ServerCheat_Implementation_KBD,
+            &ABasePlayerController_ServerCheat_Implementation_KBD_original
+        );
+
+        const bool global_command_hook = hooks.SetHook(
+            "AShooterPlayerController.ServerGlobalCommand_Implementation",
+            &Hook_AShooterPlayerController_ServerGlobalCommand_Implementation_KBD,
+            &AShooterPlayerController_ServerGlobalCommand_Implementation_KBD_original
         );
 
         WriteLog(
-            std::string("[HOOK] APlayerController.ConsoleCommand=") +
-            (console_hook ? "OK" : "FAIL"),
+            std::string("[HOOK] ServerCheat=") +
+            (server_cheat_hook ? "OK" : "FAIL") +
+            " ServerGlobalCommand=" +
+            (global_command_hook ? "OK" : "FAIL"),
             true
         );
 
@@ -1566,7 +1612,7 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().AddChatCommand("/kbddump", &ChatDumpReins);
         ArkApi::GetCommands().AddChatCommand("/kbdhybrids", &ChatDumpHybrids);
 
-        WriteLog("[LOAD] KBDHybridBridge v1.2 loaded", true);
+        WriteLog("[LOAD] KBDHybridBridge v1.3 loaded", true);
     }
 
     void Unload()
@@ -1602,8 +1648,13 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().RemoveChatCommand("/kbdhybrids");
 
         ArkApi::GetHooks().DisableHook(
-            "APlayerController.ConsoleCommand",
-            &Hook_APlayerController_ConsoleCommand_KBD
+            "ABasePlayerController.ServerCheat_Implementation",
+            &Hook_ABasePlayerController_ServerCheat_Implementation_KBD
+        );
+
+        ArkApi::GetHooks().DisableHook(
+            "AShooterPlayerController.ServerGlobalCommand_Implementation",
+            &Hook_AShooterPlayerController_ServerGlobalCommand_Implementation_KBD
         );
 
         WriteLog("[UNLOAD] KBDHybridBridge unloaded", true);

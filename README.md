@@ -1,4 +1,4 @@
-# KBDHybridBridge v1.2 (ASE ArkApi)
+# KBDHybridBridge v1.3 (ASE ArkApi)
 
 v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
@@ -236,3 +236,24 @@ The server log should also show:
 
     [HOOK] APlayerController.ConsoleCommand=OK
     [TERMINAL] kbd status
+
+## v1.3 — dedicated-server terminal routing
+
+`APlayerController.ConsoleCommand` is normally executed on the client and does not
+reliably reach a dedicated server. v1.3 handles commands on the authenticated server
+RPC paths instead:
+
+- `ABasePlayerController.ServerCheat_Implementation`
+- `AShooterPlayerController.ServerGlobalCommand_Implementation`
+
+Enable cheats normally, then use the Tab terminal:
+
+    cheat kbd status
+    cheat kbd reload
+    cheat kbd scan
+    cheat kbd dump
+    cheat kbd hybrids
+
+`admincheat` and the long `KBDHybridBridge.*` aliases are also accepted. Commands are
+restricted to authenticated server admins, and results are returned through
+`ClientMessage` so they are written to the player's console.
