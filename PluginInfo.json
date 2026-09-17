@@ -1,7 +1,7 @@
 {
   "FullName": "KBD Hybrid Bridge",
-  "Description": "KBD/Sid hybrid compatibility bridge with in-game diagnostics.",
-  "Version": 0.8,
+  "Description": "KBD/Sid hybrid compatibility bridge with chat diagnostics and built-in config fallbacks.",
+  "Version": 0.9,
   "MinApiVersion": 3.5,
   "Dependencies": []
 }

@@ -74,6 +74,22 @@ namespace KBDHybridBridge
         );
     }
 
+    void ChatReply(AShooterPlayerController* controller, const std::string& msg)
+    {
+        if (!controller)
+            return;
+
+        FString sender("KBDHybridBridge");
+        FString text(msg.c_str());
+
+        ArkApi::GetApiUtils().SendChatMessage(
+            controller,
+            sender,
+            L"%s",
+            *text
+        );
+    }
+
     std::string ObjectName(UObjectBase* obj)
     {
         if (!obj)
@@ -493,7 +509,7 @@ namespace KBDHybridBridge
         }
 
         const std::string header =
-            "KBDHybridBridge v0.8: found " +
+            "KBDHybridBridge v0.9: found " +
             std::to_string(found.size()) +
             " loaded Valyrian Reins buff classes.";
 
@@ -572,18 +588,423 @@ namespace KBDHybridBridge
             Reply(controller, "KBDHybridBridge: matched " + std::to_string(matches) + " hybrid class(es).");
     }
 
+    json BuiltInConfig()
+    {
+        static const char* kBuiltIn = R"JSON(
+{
+  "Enabled": true,
+  "Debug": false,
+  "ScanEverySeconds": 5,
+  "ParentProfiles": {
+    "Argent": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Argent_C"
+      ],
+      "DiscoveryTokens": [
+        "argent"
+      ],
+      "Verified": true
+    },
+    "Tapejara": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Tapejara_C"
+      ],
+      "DiscoveryTokens": [
+        "tapejara"
+      ],
+      "Verified": true
+    },
+    "Ptera": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Ptera_C",
+        "Buff_ValyrianReins_Ptero_C"
+      ],
+      "DiscoveryTokens": [
+        "ptera",
+        "ptero"
+      ],
+      "Verified": false
+    },
+    "Quetz": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Quetz_C"
+      ],
+      "DiscoveryTokens": [
+        "quetz"
+      ],
+      "Verified": false
+    },
+    "Moth": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Moth_C"
+      ],
+      "DiscoveryTokens": [
+        "moth",
+        "lymantria"
+      ],
+      "Verified": false
+    },
+    "Pela": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Pela_C",
+        "Buff_ValyrianReins_Pelagornis_C"
+      ],
+      "DiscoveryTokens": [
+        "pela",
+        "pelagornis"
+      ],
+      "Verified": false
+    },
+    "RockDrake": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_RockDrake_C",
+        "Buff_ValyrianReins_Drake_C"
+      ],
+      "DiscoveryTokens": [
+        "rockdrake",
+        "drake"
+      ],
+      "Verified": false
+    },
+    "Griffin": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Griffin_C"
+      ],
+      "DiscoveryTokens": [
+        "griffin"
+      ],
+      "Verified": false
+    },
+    "Owl": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Owl_C",
+        "Buff_ValyrianReins_SnowOwl_C"
+      ],
+      "DiscoveryTokens": [
+        "owl",
+        "snowowl"
+      ],
+      "Verified": false
+    },
+    "Managarmr": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Managarmr_C",
+        "Buff_ValyrianReins_Mana_C"
+      ],
+      "DiscoveryTokens": [
+        "managarmr",
+        "mana"
+      ],
+      "Verified": false
+    },
+    "GasBags": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_GasBags_C",
+        "Buff_ValyrianReins_Gasbag_C"
+      ],
+      "DiscoveryTokens": [
+        "gasbags",
+        "gasbag"
+      ],
+      "Verified": false
+    },
+    "Tropeognathus": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Tropeognathus_C",
+        "Buff_ValyrianReins_Tropeo_C"
+      ],
+      "DiscoveryTokens": [
+        "tropeognathus",
+        "tropeo"
+      ],
+      "Verified": false
+    },
+    "Wyvern": {
+      "BuffCandidates": [
+        "Buff_ValyrianReins_Wyvern_C"
+      ],
+      "DiscoveryTokens": [
+        "wyvern"
+      ],
+      "Verified": false
+    }
+  },
+  "Mappings": [
+    {
+      "Name": "Argentjara",
+      "Aliases": [
+        "Argentjara",
+        "TapeArgent"
+      ],
+      "Parents": [
+        "Argent",
+        "Tapejara"
+      ]
+    },
+    {
+      "Name": "Serpentmoloch",
+      "Aliases": [
+        "Serpentmoloch",
+        "Flyboa"
+      ],
+      "Parents": [
+        "Argent"
+      ]
+    },
+    {
+      "Name": "Tropeocoatlus",
+      "Aliases": [
+        "Tropeocoatlus",
+        "QuetzTrop"
+      ],
+      "Parents": [
+        "Quetz",
+        "Tropeognathus"
+      ]
+    },
+    {
+      "Name": "Colossodraco",
+      "Aliases": [
+        "Colossodraco",
+        "RockQuetz"
+      ],
+      "Parents": [
+        "Quetz"
+      ]
+    },
+    {
+      "Name": "Gigadeisopteryx",
+      "Aliases": [
+        "Gigadeisopteryx",
+        "Gigadeusopteryx",
+        "QuetzGiga"
+      ],
+      "Parents": [
+        "Quetz"
+      ]
+    },
+    {
+      "Name": "Wolf Wyvern",
+      "Aliases": [
+        "WolfWyvern",
+        "Wolf_Wyvern",
+        "Wolfwyv"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Necro Wyvern",
+      "Aliases": [
+        "NecroWyvern",
+        "Necro_Wyvern"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Meteor Wyvern",
+      "Aliases": [
+        "MeteorWyvern",
+        "Meteor_Wyvern"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Plasma Wyvern",
+      "Aliases": [
+        "PlasmaWyvern",
+        "Plasma_Wyvern"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Neoavirhinus",
+      "Aliases": [
+        "Neoavirhinus"
+      ],
+      "Parents": [
+        "Tropeognathus"
+      ]
+    },
+    {
+      "Name": "Frostvarg",
+      "Aliases": [
+        "Frostvarg",
+        "Frovarg"
+      ],
+      "Parents": [
+        "Managarmr"
+      ]
+    },
+    {
+      "Name": "Pelagosuchus",
+      "Aliases": [
+        "Pelagosuchus"
+      ],
+      "Parents": [
+        "Pela"
+      ]
+    },
+    {
+      "Name": "Pelosornis",
+      "Aliases": [
+        "Pelosornis"
+      ],
+      "Parents": [
+        "Ptera"
+      ]
+    },
+    {
+      "Name": "Phalainasuchus",
+      "Aliases": [
+        "Phalainasuchus"
+      ],
+      "Parents": [
+        "Moth"
+      ]
+    },
+    {
+      "Name": "Nyctavenator",
+      "Aliases": [
+        "Nyctavenator"
+      ],
+      "Parents": [
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Vulcanotavis",
+      "Aliases": [
+        "Vulcanotavis",
+        "ArgentMagma"
+      ],
+      "Parents": [
+        "Argent"
+      ]
+    },
+    {
+      "Name": "Magsuredrake",
+      "Aliases": [
+        "Magsuredrake",
+        "Magsure"
+      ],
+      "Parents": [
+        "RockDrake",
+        "Wyvern"
+      ]
+    },
+    {
+      "Name": "Glacialisvenator",
+      "Aliases": [
+        "Glacialisvenator",
+        "ManaYO"
+      ],
+      "Parents": [
+        "Managarmr",
+        "Owl"
+      ]
+    },
+    {
+      "Name": "Caelumlator",
+      "Aliases": [
+        "Caelumlator",
+        "Yomoth"
+      ],
+      "Parents": [
+        "Moth"
+      ]
+    },
+    {
+      "Name": "Spinojalosaurus",
+      "Aliases": [
+        "Spinojalosaurus",
+        "Spinotape"
+      ],
+      "Parents": [
+        "Tapejara"
+      ]
+    },
+    {
+      "Name": "Aracnoptera",
+      "Aliases": [
+        "Aracnoptera",
+        "SpiderMoth"
+      ],
+      "Parents": [
+        "Moth"
+      ]
+    },
+    {
+      "Name": "Gigaplolophosaura",
+      "Aliases": [
+        "Gigaplolophosaura",
+        "TapajaraHyb"
+      ],
+      "Parents": [
+        "Tapejara"
+      ]
+    }
+  ]
+}
+)JSON";
+
+        return json::parse(kBuiltIn);
+    }
+
     void ReadConfig()
     {
         std::ifstream f(PluginDir() + "/config.json");
         if (!f.is_open())
             throw std::runtime_error("KBDHybridBridge: could not open config.json");
 
-        json cfg;
-        f >> cfg;
+        json external_cfg;
+        f >> external_cfg;
+
+        // v0.9: keep working even if the server still has an older v0.6 config.json.
+        // Runtime toggles come from the external file, while missing/new schema sections
+        // fall back to defaults compiled into the DLL.
+        json cfg = BuiltInConfig();
+
+        cfg["Enabled"] = external_cfg.value("Enabled", cfg.value("Enabled", true));
+        cfg["Debug"] = external_cfg.value("Debug", cfg.value("Debug", false));
+        cfg["ScanEverySeconds"] =
+            external_cfg.value("ScanEverySeconds", cfg.value("ScanEverySeconds", 5));
+
+        const bool has_new_profiles =
+            external_cfg.contains("ParentProfiles") &&
+            external_cfg["ParentProfiles"].is_object() &&
+            !external_cfg["ParentProfiles"].empty();
+
+        const bool has_new_mappings =
+            external_cfg.contains("Mappings") &&
+            external_cfg["Mappings"].is_array() &&
+            !external_cfg["Mappings"].empty() &&
+            external_cfg["Mappings"][0].contains("Name");
+
+        if (has_new_profiles)
+            cfg["ParentProfiles"] = external_cfg["ParentProfiles"];
+
+        if (has_new_mappings)
+            cfg["Mappings"] = external_cfg["Mappings"];
 
         enabled = cfg.value("Enabled", true);
         debug = cfg.value("Debug", false);
         scan_every_seconds = std::max(1, cfg.value("ScanEverySeconds", 5));
+
+        if (!has_new_profiles || !has_new_mappings)
+        {
+            WriteLog(
+                "[CONFIG] older/incomplete config schema detected; using v0.9 built-in parent/mapping defaults",
+                true
+            );
+        }
 
         std::unordered_map<std::string, ParentProfile> new_profiles;
 
@@ -655,7 +1076,7 @@ namespace KBDHybridBridge
             Scan();
 
             const std::string msg =
-                "KBDHybridBridge v0.8 reloaded: " +
+                "KBDHybridBridge v0.9 reloaded: " +
                 std::to_string(parent_profiles.size()) +
                 " parent profiles, " +
                 std::to_string(mappings.size()) +
@@ -684,7 +1105,7 @@ namespace KBDHybridBridge
     void StatusCommand(APlayerController* controller, FString*, bool)
     {
         const std::string status =
-            std::string("KBDHybridBridge v0.8 | Enabled=") +
+            std::string("KBDHybridBridge v0.9 | Enabled=") +
             (enabled ? "true" : "false") +
             " | ScanEverySeconds=" +
             std::to_string(scan_every_seconds) +
@@ -694,6 +1115,158 @@ namespace KBDHybridBridge
             std::to_string(mappings.size());
 
         Reply(controller, status);
+    }
+
+
+    void ChatStatus(
+        AShooterPlayerController* controller,
+        FString*,
+        EChatSendMode::Type
+    )
+    {
+        const std::string status =
+            std::string("v0.9 | Enabled=") +
+            (enabled ? "true" : "false") +
+            " | Scan=" + std::to_string(scan_every_seconds) +
+            "s | Parents=" + std::to_string(parent_profiles.size()) +
+            " | Hybrids=" + std::to_string(mappings.size());
+
+        ChatReply(controller, status);
+    }
+
+    void ChatReload(
+        AShooterPlayerController* controller,
+        FString*,
+        EChatSendMode::Type
+    )
+    {
+        try
+        {
+            ReadConfig();
+            Scan();
+
+            ChatReply(
+                controller,
+                "Reloaded. Parents=" +
+                std::to_string(parent_profiles.size()) +
+                " Hybrids=" +
+                std::to_string(mappings.size())
+            );
+        }
+        catch (const std::exception& e)
+        {
+            ChatReply(controller, std::string("Reload failed: ") + e.what());
+        }
+    }
+
+    void ChatScan(
+        AShooterPlayerController* controller,
+        FString*,
+        EChatSendMode::Type
+    )
+    {
+        Scan();
+        ChatReply(controller, "Manual hybrid scan complete.");
+    }
+
+    void ChatDumpReins(
+        AShooterPlayerController* controller,
+        FString*,
+        EChatSendMode::Type
+    )
+    {
+        std::set<std::string> found;
+        const std::string prefix = "buff_valyrianreins_";
+
+        auto& objects = Globals::GUObjectArray()();
+
+        for (int i = 0; i < objects.ObjObjects.NumElements; ++i)
+        {
+            auto* item = objects.ObjObjects.GetObjectPtr(i);
+            if (!item || !item->Object)
+                continue;
+
+            UObject* obj = item->Object;
+
+            if (obj->ClassField())
+            {
+                const std::string cls_name = ObjectName(obj->ClassField());
+                if (StartsWith(Lower(cls_name), prefix))
+                    found.insert(cls_name);
+            }
+
+            const std::string obj_name = ObjectName(obj);
+            if (StartsWith(Lower(obj_name), prefix) && EndsWith(obj_name, "_C"))
+                found.insert(obj_name);
+        }
+
+        ChatReply(
+            controller,
+            "Loaded Valyrian Reins buff classes: " +
+            std::to_string(found.size())
+        );
+
+        for (const auto& name : found)
+            ChatReply(controller, name);
+    }
+
+    void ChatDumpHybrids(
+        AShooterPlayerController* controller,
+        FString*,
+        EChatSendMode::Type
+    )
+    {
+        UWorld* world = ArkApi::GetApiUtils().GetWorld();
+        if (!world)
+        {
+            ChatReply(controller, "World is not available.");
+            return;
+        }
+
+        TArray<AActor*> actors;
+        UGameplayStatics::GetAllActorsOfClass(
+            reinterpret_cast<UObject*>(world),
+            APrimalDinoCharacter::GetPrivateStaticClass(),
+            &actors
+        );
+
+        std::set<std::string> logged;
+        int matches = 0;
+
+        for (AActor* actor : actors)
+        {
+            if (!actor)
+                continue;
+
+            auto* dino = static_cast<APrimalDinoCharacter*>(actor);
+            const std::string cls = ClassName(dino);
+
+            HybridMapping* mapping = MatchHybrid(cls);
+            if (!mapping)
+                continue;
+
+            const std::string key = cls + "|" + mapping->name;
+            if (!logged.insert(key).second)
+                continue;
+
+            ++matches;
+
+            std::ostringstream ss;
+            ss << cls << " -> " << mapping->name << " [";
+
+            for (size_t i = 0; i < mapping->parents.size(); ++i)
+            {
+                if (i)
+                    ss << ",";
+                ss << mapping->parents[i];
+            }
+
+            ss << "]";
+            ChatReply(controller, ss.str());
+        }
+
+        if (matches == 0)
+            ChatReply(controller, "No live mapped Sid hybrids found.");
     }
 
     void Load()
@@ -730,7 +1303,13 @@ namespace KBDHybridBridge
             &StatusCommand
         );
 
-        WriteLog("[LOAD] KBDHybridBridge v0.8 loaded", true);
+        ArkApi::GetCommands().AddChatCommand("/kbdstatus", &ChatStatus);
+        ArkApi::GetCommands().AddChatCommand("/kbdreload", &ChatReload);
+        ArkApi::GetCommands().AddChatCommand("/kbdscan", &ChatScan);
+        ArkApi::GetCommands().AddChatCommand("/kbddump", &ChatDumpReins);
+        ArkApi::GetCommands().AddChatCommand("/kbdhybrids", &ChatDumpHybrids);
+
+        WriteLog("[LOAD] KBDHybridBridge v0.9 loaded", true);
     }
 
     void Unload()
@@ -758,6 +1337,12 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().RemoveConsoleCommand(
             "KBDHybridBridge.Status"
         );
+
+        ArkApi::GetCommands().RemoveChatCommand("/kbdstatus");
+        ArkApi::GetCommands().RemoveChatCommand("/kbdreload");
+        ArkApi::GetCommands().RemoveChatCommand("/kbdscan");
+        ArkApi::GetCommands().RemoveChatCommand("/kbddump");
+        ArkApi::GetCommands().RemoveChatCommand("/kbdhybrids");
 
         WriteLog("[UNLOAD] KBDHybridBridge unloaded", true);
     }

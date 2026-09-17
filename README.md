@@ -1,4 +1,4 @@
-# KBDHybridBridge v0.8 (ASE ArkApi)
+# KBDHybridBridge v0.9 (ASE ArkApi)
 
 v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
@@ -131,3 +131,37 @@ Run these in the in-game console (Tab), with NO `cheat` prefix:
 `Status` prints the plugin version, enabled state, scan interval, and loaded mapping counts.
 
 The log is still retained as a backup, but it is no longer required for normal diagnostics.
+
+
+## v0.9 — chat commands + stale-config protection
+
+The live test showed:
+
+    [CONFIG] loaded 0 parent profiles and 0 hybrid mappings
+
+That happened because only the DLL had been hot-updated while the server still had an older
+pre-v0.7 config schema. v0.9 compiles the current parent profiles and hybrid mappings into
+the DLL as defaults. If the external config is old or incomplete, the plugin keeps the
+external Enabled/Debug/ScanEverySeconds values but falls back to the built-in mappings.
+
+v0.9 also adds in-game CHAT commands, because the client console commands were being echoed
+but were not reliably hitting the ArkApi callback on this setup.
+
+Open normal ARK chat and type:
+
+    /kbdstatus
+    /kbdreload
+    /kbdscan
+    /kbddump
+    /kbdhybrids
+
+`/kbdstatus` should answer immediately with something like:
+
+    KBDHybridBridge: v0.9 | Enabled=true | Scan=5s | Parents=13 | Hybrids=22
+
+`/kbddump` prints every currently loaded `Buff_ValyrianReins_*_C` class to your in-game chat.
+
+`/kbdhybrids` prints the live Sid hybrid classes that matched a mapping.
+
+The old console commands are still registered as a secondary route, but chat is the
+recommended diagnostic interface for this server.
