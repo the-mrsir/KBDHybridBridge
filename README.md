@@ -1,4 +1,4 @@
-# KBDHybridBridge v0.7 (ASE ArkApi)
+# KBDHybridBridge v0.8 (ASE ArkApi)
 
 v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
@@ -110,3 +110,24 @@ That capability needs a separate safe rider/mount hook and is intentionally not 
 v0.7 does NOT blindly inject normal KBD creature buffs such as Raptor, Yuty, Rock Golem,
 etc. Those often contain species-specific blueprint assumptions. We should identify and
 test them individually before adding an `Always` parent-buff layer.
+
+
+## v0.8 — in-game command feedback
+
+The diagnostic commands now reply directly to the player who runs them using ArkAPI server messages. You no longer need the plugin log just to see command output.
+
+Run these in the in-game console (Tab), with NO `cheat` prefix:
+
+    KBDHybridBridge.Status
+    KBDHybridBridge.Reload
+    KBDHybridBridge.Scan
+    KBDHybridBridge.DumpReinsBuffs
+    KBDHybridBridge.DumpMatchedHybrids
+
+`DumpReinsBuffs` prints the loaded `Buff_ValyrianReins_*_C` class names directly in game.
+
+`DumpMatchedHybrids` prints each live Sid hybrid class that matched and the KBD parent profiles assigned to it.
+
+`Status` prints the plugin version, enabled state, scan interval, and loaded mapping counts.
+
+The log is still retained as a backup, but it is no longer required for normal diagnostics.

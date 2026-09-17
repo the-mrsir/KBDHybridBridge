@@ -60,6 +60,20 @@ namespace KBDHybridBridge
             f << msg << "\n";
     }
 
+    void Reply(APlayerController* controller, const std::string& msg, bool error = false)
+    {
+        if (!controller)
+            return;
+
+        auto* shooter = static_cast<AShooterPlayerController*>(controller);
+
+        ArkApi::GetApiUtils().SendServerMessage(
+            shooter,
+            error ? FColorList::Red : FColorList::Green,
+            msg.c_str()
+        );
+    }
+
     std::string ObjectName(UObjectBase* obj)
     {
         if (!obj)
@@ -451,7 +465,7 @@ namespace KBDHybridBridge
         Scan();
     }
 
-    void DumpReinsBuffsCommand(APlayerController*, FString*, bool)
+    void DumpReinsBuffsCommand(APlayerController* controller, FString*, bool)
     {
         std::set<std::string> found;
         const std::string prefix = "buff_valyrianreins_";
@@ -478,21 +492,35 @@ namespace KBDHybridBridge
                 found.insert(obj_name);
         }
 
-        WriteLog(
-            "[DUMP] loaded Valyrian Reins buff classes: " +
-            std::to_string(found.size()),
-            true
-        );
+        const std::string header =
+            "KBDHybridBridge v0.8: found " +
+            std::to_string(found.size()) +
+            " loaded Valyrian Reins buff classes.";
+
+        Reply(controller, header);
+        WriteLog("[DUMP] " + header, true);
+
+        if (found.empty())
+        {
+            Reply(controller, "No loaded Buff_ValyrianReins_* classes found.", true);
+            return;
+        }
 
         for (const auto& name : found)
+        {
+            Reply(controller, name);
             WriteLog("[DUMP] " + name, true);
+        }
     }
 
-    void DumpMatchedHybridsCommand(APlayerController*, FString*, bool)
+    void DumpMatchedHybridsCommand(APlayerController* controller, FString*, bool)
     {
         UWorld* world = ArkApi::GetApiUtils().GetWorld();
         if (!world)
+        {
+            Reply(controller, "KBDHybridBridge: world is not available.", true);
             return;
+        }
 
         TArray<AActor*> actors;
         UGameplayStatics::GetAllActorsOfClass(
@@ -502,6 +530,7 @@ namespace KBDHybridBridge
         );
 
         std::set<std::string> logged;
+        int matches = 0;
 
         for (AActor* actor : actors)
         {
@@ -519,20 +548,28 @@ namespace KBDHybridBridge
             if (!logged.insert(key).second)
                 continue;
 
+            ++matches;
+
             std::ostringstream ss;
-            ss << "[MATCH] class=" << cls
-               << " hybrid=" << mapping->name
-               << " parents=";
+            ss << cls << " -> " << mapping->name << " [";
 
             for (size_t i = 0; i < mapping->parents.size(); ++i)
             {
                 if (i)
-                    ss << ",";
+                    ss << ", ";
                 ss << mapping->parents[i];
             }
 
-            WriteLog(ss.str(), true);
+            ss << "]";
+
+            Reply(controller, ss.str());
+            WriteLog("[MATCH] " + ss.str(), true);
         }
+
+        if (matches == 0)
+            Reply(controller, "KBDHybridBridge: no live mapped Sid hybrids found.", true);
+        else
+            Reply(controller, "KBDHybridBridge: matched " + std::to_string(matches) + " hybrid class(es).");
     }
 
     void ReadConfig()
@@ -610,24 +647,53 @@ namespace KBDHybridBridge
         );
     }
 
-    void ReloadCommand(APlayerController*, FString*, bool)
+    void ReloadCommand(APlayerController* controller, FString*, bool)
     {
         try
         {
             ReadConfig();
             Scan();
-            WriteLog("[RELOAD] config reloaded", true);
+
+            const std::string msg =
+                "KBDHybridBridge v0.8 reloaded: " +
+                std::to_string(parent_profiles.size()) +
+                " parent profiles, " +
+                std::to_string(mappings.size()) +
+                " hybrid mappings.";
+
+            WriteLog("[RELOAD] " + msg, true);
+            Reply(controller, msg);
         }
         catch (const std::exception& e)
         {
-            WriteLog(std::string("[ERROR] reload failed: ") + e.what(), true);
+            const std::string msg =
+                std::string("KBDHybridBridge reload failed: ") + e.what();
+
+            WriteLog("[ERROR] " + msg, true);
+            Reply(controller, msg, true);
         }
     }
 
-    void ScanCommand(APlayerController*, FString*, bool)
+    void ScanCommand(APlayerController* controller, FString*, bool)
     {
         Scan();
         WriteLog("[SCAN] manual scan complete", true);
+        Reply(controller, "KBDHybridBridge: manual scan complete.");
+    }
+
+    void StatusCommand(APlayerController* controller, FString*, bool)
+    {
+        const std::string status =
+            std::string("KBDHybridBridge v0.8 | Enabled=") +
+            (enabled ? "true" : "false") +
+            " | ScanEverySeconds=" +
+            std::to_string(scan_every_seconds) +
+            " | ParentProfiles=" +
+            std::to_string(parent_profiles.size()) +
+            " | HybridMappings=" +
+            std::to_string(mappings.size());
+
+        Reply(controller, status);
     }
 
     void Load()
@@ -659,7 +725,12 @@ namespace KBDHybridBridge
             &DumpMatchedHybridsCommand
         );
 
-        WriteLog("[LOAD] KBDHybridBridge v0.7 loaded", true);
+        ArkApi::GetCommands().AddConsoleCommand(
+            "KBDHybridBridge.Status",
+            &StatusCommand
+        );
+
+        WriteLog("[LOAD] KBDHybridBridge v0.8 loaded", true);
     }
 
     void Unload()
@@ -682,6 +753,10 @@ namespace KBDHybridBridge
 
         ArkApi::GetCommands().RemoveConsoleCommand(
             "KBDHybridBridge.DumpMatchedHybrids"
+        );
+
+        ArkApi::GetCommands().RemoveConsoleCommand(
+            "KBDHybridBridge.Status"
         );
 
         WriteLog("[UNLOAD] KBDHybridBridge unloaded", true);
