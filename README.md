@@ -1,4 +1,4 @@
-# KBDHybridBridge v0.9 (ASE ArkApi)
+# KBDHybridBridge v1.1 (ASE ArkApi)
 
 v0.7 expands the proven Argentjara bridge into a data-driven parent system.
 
@@ -165,3 +165,86 @@ Open normal ARK chat and type:
 
 The old console commands are still registered as a secondary route, but chat is the
 recommended diagnostic interface for this server.
+
+
+## v1.0 — fixes literal `%s` in chat
+
+v0.9 used printf-style `%s` with ArkApi's `SendChatMessage`.
+
+ArkApi does not use printf formatting there; it uses `FString::Format` / fmt-style formatting.
+That is why the game literally displayed:
+
+    KBDHybridBridge: %s
+
+v1.0 passes the prepared `FString` directly to `SendChatMessage`, matching ArkApi's own plugin examples.
+
+After hot-loading v1.0, normal ARK chat commands should display their real contents:
+
+    /kbdstatus
+    /kbdreload
+    /kbdscan
+    /kbddump
+    /kbdhybrids
+
+Recommended first test:
+
+    /kbdstatus
+
+Expected roughly:
+
+    KBDHybridBridge: v1.0 | Enabled=true | Scan=5s | Parents=13 | Hybrids=22
+
+
+## v1.1 — terminal commands fixed
+
+Bare custom commands typed into the ARK client console do not reliably reach a server-side
+ArkApi plugin. v1.1 intercepts ARK's actual admin-cheat path instead.
+
+After enabling cheats normally, open Tab and use:
+
+    cheat kbd status
+    cheat kbd reload
+    cheat kbd scan
+    cheat kbd dump
+    cheat kbd hybrids
+
+`admincheat` should work too because it reaches the same server admin-cheat path.
+
+The older long names are also accepted after `cheat`, for example:
+
+    cheat KBDHybridBridge.Status
+
+v1.1 hooks both:
+- `AShooterPlayerController.AdminCheat`
+- `AShooterPlayerController.Cheat`
+
+and only consumes commands beginning with the KBD command names. Normal ARK cheat commands
+are passed through untouched.
+
+### RCON / host terminal
+
+v1.1 also registers:
+
+    kbd.status
+    kbd.reload
+    kbd.scan
+    kbd.dump
+    kbd.hybrids
+
+as real ArkApi RCON commands. Those return output directly to the RCON client/host terminal.
+
+### First test
+
+In ARK:
+
+    cheat kbd status
+
+Expected:
+
+    KBDHybridBridge v1.1 | Enabled=true | Scan=5s | Parents=13 | Hybrids=22
+
+Then:
+
+    cheat kbd dump
+
+to enumerate the loaded KBD Valyrian Reins buff classes.

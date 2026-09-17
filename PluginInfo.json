@@ -1,7 +1,7 @@
 {
   "FullName": "KBD Hybrid Bridge",
-  "Description": "KBD/Sid hybrid compatibility bridge with chat diagnostics and built-in config fallbacks.",
-  "Version": 0.9,
+  "Description": "KBD/Sid hybrid compatibility bridge with cheat-console and RCON terminal commands.",
+  "Version": 1.1,
   "MinApiVersion": 3.5,
   "Dependencies": []
 }
