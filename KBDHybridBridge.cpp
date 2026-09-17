@@ -13,35 +13,43 @@ namespace KBDHybridBridge
 {
     using json = nlohmann::json;
 
+    struct BuffSpec
+    {
+        std::string name;
+        UClass* cls = nullptr;
+    };
+
     struct Rule
     {
-        std::string trigger;              // "Always" or "ValyrianReins"
-        std::vector<std::string> buffs;   // e.g. Buff_ValyrianReins_Argent_C
+        std::string trigger;
+        std::vector<BuffSpec> buffs;
     };
 
     struct Mapping
     {
-        std::string dino_class;           // e.g. Argentjara_Character_BP_C
+        std::string dino_class_name;
+        UClass* dino_class = nullptr;
         std::vector<Rule> rules;
     };
 
-    static bool enabled = true;
-    static bool debug = true;
-    static int scan_every_seconds = 1;
-    static bool inventory_reins_fallback = false;
-    static int seconds_since_scan = 0;
-    static std::vector<Mapping> mappings;
-
     static const std::string plugin_name = "KBDHybridBridge";
+
+    static bool enabled = true;
+    static bool debug = false;
+    static int scan_every_seconds = 5;
+    static int seconds_since_scan = 0;
+
+    static std::vector<Mapping> mappings;
+    static std::unordered_map<UClass*, size_t> mapping_by_class;
 
     std::string PluginDir()
     {
         return ArkApi::Tools::GetCurrentDir() + "/ArkApi/Plugins/" + plugin_name;
     }
 
-    void WriteLog(const std::string& msg)
+    void WriteLog(const std::string& msg, bool force = false)
     {
-        if (!debug)
+        if (!debug && !force)
             return;
 
         std::ofstream f(PluginDir() + "/KBDHybridBridge.log", std::ios::app);
@@ -71,8 +79,8 @@ namespace KBDHybridBridge
         return ObjectName(obj->ClassField());
     }
 
-    // KBD's buff classes are already loaded whenever KBD is active.
-    // Find the UClass object by its short Unreal class name.
+    // EXPENSIVE lookup. v0.5 only calls this at config load/reload,
+    // never once-per-dino / once-per-scan.
     UClass* FindLoadedClass(const std::string& short_name)
     {
         auto& objects = Globals::GUObjectArray()();
@@ -85,12 +93,9 @@ namespace KBDHybridBridge
 
             UObject* obj = item->Object;
 
-            // Class objects have the requested class as their own object name.
             if (ObjectName(obj) != short_name)
                 continue;
 
-            // Avoid returning a normal instance/CDO that happens to share text.
-            // A UClass object is itself an instance of the Unreal meta-class "Class".
             if (obj->ClassField() && ObjectName(obj->ClassField()) == "Class")
                 return reinterpret_cast<UClass*>(obj);
         }
@@ -107,29 +112,27 @@ namespace KBDHybridBridge
         return item_class.find("ValyrianReins") != std::string::npos;
     }
 
-    UPrimalItem* MatchReins(UPrimalItem* item, const char* source)
+    UPrimalItem* MatchDirectOrSkin(UPrimalItem* item)
     {
         if (!item)
             return nullptr;
 
         if (IsValyrianReinsItem(item))
-        {
-            WriteLog(std::string("[REINS] found directly in ") + source + ": " + ClassName(item));
             return item;
-        }
 
         UPrimalItem* skin = item->MyItemSkinField();
         if (IsValyrianReinsItem(skin))
-        {
-            WriteLog(std::string("[REINS] found as skin in ") + source + ": " + ClassName(skin));
             return skin;
-        }
 
         return nullptr;
     }
 
-    // ASE keeps equipment, slots/costumes, and ordinary inventory in separate arrays.
-    // v0.3 only looked at EquippedItems, which can miss creature costume-slot items.
+    // v0.5:
+    // - EquippedItems and ItemSlots first.
+    // - Then InventoryItems, but ONLY if ARK marks the Reins item equipped,
+    //   or the Reins is actually skinned onto another item.
+    // This is intended to catch dino Costume-slot equipment without treating
+    // a loose Reins item in inventory as active.
     UPrimalItem* FindValyrianReins(APrimalDinoCharacter* dino)
     {
         if (!dino)
@@ -139,44 +142,35 @@ namespace KBDHybridBridge
         if (!inv)
             return nullptr;
 
-        // Normal equipped items (saddles, armor, etc.)
-        auto equipped = inv->EquippedItemsField();
-        for (UPrimalItem* item : equipped)
+        for (UPrimalItem* item : inv->EquippedItemsField())
         {
-            if (auto* found = MatchReins(item, "EquippedItems"))
+            if (auto* found = MatchDirectOrSkin(item))
                 return found;
         }
 
-        // Creature costume/slot items can live here instead of EquippedItems.
-        auto slots = inv->ItemSlotsField();
-        for (UPrimalItem* item : slots)
+        for (UPrimalItem* item : inv->ItemSlotsField())
         {
-            if (auto* found = MatchReins(item, "ItemSlots"))
+            if (auto* found = MatchDirectOrSkin(item))
                 return found;
         }
 
-        // Diagnostic/fallback path. Disabled by default because a loose Reins item
-        // sitting in normal inventory should not count as equipped.
-        auto inventory = inv->InventoryItemsField();
-        for (UPrimalItem* item : inventory)
+        for (UPrimalItem* item : inv->InventoryItemsField())
         {
             if (!item)
                 continue;
 
             if (IsValyrianReinsItem(item))
             {
-                WriteLog("[REINS] Reins exists in InventoryItems: " + ClassName(item));
-                if (inventory_reins_fallback)
+                const bool equipped = static_cast<bool>(item->bEquippedItem());
+                const bool skinned = item->SkinnedOntoItemField() != nullptr;
+
+                if (equipped || skinned)
                     return item;
             }
 
             UPrimalItem* skin = item->MyItemSkinField();
             if (IsValyrianReinsItem(skin))
-            {
-                WriteLog("[REINS] Reins skin exists on InventoryItems item: " + ClassName(item));
-                if (inventory_reins_fallback)
-                    return skin;
-            }
+                return skin;
         }
 
         return nullptr;
@@ -190,23 +184,16 @@ namespace KBDHybridBridge
         return dino->GetBuff(TSubclassOf<APrimalBuff>(buff_class));
     }
 
-    bool ApplyBuff(APrimalDinoCharacter* dino, const std::string& buff_name, UPrimalItem* associated_item)
+    bool ApplyBuff(APrimalDinoCharacter* dino, const BuffSpec& buff, UPrimalItem* associated_item)
     {
-        UClass* buff_class = FindLoadedClass(buff_name);
-        if (!buff_class)
-        {
-            WriteLog("[WARN] Buff class not loaded/found: " + buff_name);
+        if (!buff.cls)
             return false;
-        }
 
-        if (GetBuff(dino, buff_class))
+        if (GetBuff(dino, buff.cls))
             return true;
 
-        // Passing the actual Valyrian Reins item is intentional:
-        // KBD can read the associated item's durability/quality rather than
-        // us hard-coding KBD's movement/stamina math.
         APrimalBuff* added = APrimalBuff::StaticAddBuff(
-            TSubclassOf<APrimalBuff>(buff_class),
+            TSubclassOf<APrimalBuff>(buff.cls),
             dino,
             associated_item,
             dino,
@@ -215,26 +202,25 @@ namespace KBDHybridBridge
 
         if (added)
         {
-            WriteLog("[ADD] " + ObjectName(dino) + " <- " + buff_name);
+            WriteLog("[ADD] " + ObjectName(dino) + " <- " + buff.name, true);
             return true;
         }
 
-        WriteLog("[WARN] StaticAddBuff failed: " + ObjectName(dino) + " <- " + buff_name);
+        WriteLog("[WARN] StaticAddBuff failed: " + ObjectName(dino) + " <- " + buff.name, true);
         return false;
     }
 
-    void RemoveBuff(APrimalDinoCharacter* dino, const std::string& buff_name)
+    void RemoveBuff(APrimalDinoCharacter* dino, const BuffSpec& buff)
     {
-        UClass* buff_class = FindLoadedClass(buff_name);
-        if (!buff_class)
+        if (!buff.cls)
             return;
 
-        APrimalBuff* buff = GetBuff(dino, buff_class);
-        if (buff)
-        {
-            WriteLog("[REMOVE] " + ObjectName(dino) + " <- " + buff_name);
-            buff->Deactivate();
-        }
+        APrimalBuff* active = GetBuff(dino, buff.cls);
+        if (!active)
+            return;
+
+        WriteLog("[REMOVE] " + ObjectName(dino) + " <- " + buff.name, true);
+        active->Deactivate();
     }
 
     void ProcessRule(APrimalDinoCharacter* dino, const Rule& rule)
@@ -253,7 +239,6 @@ namespace KBDHybridBridge
         }
         else
         {
-            WriteLog("[WARN] Unknown trigger: " + rule.trigger);
             return;
         }
 
@@ -268,26 +253,27 @@ namespace KBDHybridBridge
 
     void ProcessDino(APrimalDinoCharacter* dino)
     {
-        if (!dino || !dino->ClassField())
+        if (!dino)
             return;
 
-        const std::string dino_class = ObjectName(dino->ClassField());
+        auto it = mapping_by_class.find(dino->ClassField());
+        if (it == mapping_by_class.end())
+            return;
 
-        for (const auto& mapping : mappings)
-        {
-            if (mapping.dino_class != dino_class)
-                continue;
+        Mapping& mapping = mappings[it->second];
 
-            for (const auto& rule : mapping.rules)
-                ProcessRule(dino, rule);
-
-            break;
-        }
+        for (const auto& rule : mapping.rules)
+            ProcessRule(dino, rule);
     }
 
+    // Still a world scan, but:
+    // - defaults to once every 5 seconds rather than every second;
+    // - class matching is O(1);
+    // - buff UClass lookups are cached;
+    // - no repeated "reins found" disk logging.
     void Scan()
     {
-        if (!enabled)
+        if (!enabled || mappings.empty())
             return;
 
         UWorld* world = ArkApi::GetApiUtils().GetWorld();
@@ -312,6 +298,9 @@ namespace KBDHybridBridge
 
     void Timer()
     {
+        if (!enabled)
+            return;
+
         if (++seconds_since_scan < scan_every_seconds)
             return;
 
@@ -329,16 +318,25 @@ namespace KBDHybridBridge
         f >> cfg;
 
         enabled = cfg.value("Enabled", true);
-        debug = cfg.value("Debug", true);
-        scan_every_seconds = std::max(1, cfg.value("ScanEverySeconds", 1));
-        inventory_reins_fallback = cfg.value("InventoryReinsFallback", false);
+        debug = cfg.value("Debug", false);
+        scan_every_seconds = std::max(1, cfg.value("ScanEverySeconds", 5));
 
         std::vector<Mapping> new_mappings;
 
         for (const auto& jmap : cfg.value("Mappings", json::array()))
         {
             Mapping mapping;
-            mapping.dino_class = jmap.value("DinoClass", "");
+            mapping.dino_class_name = jmap.value("DinoClass", "");
+            if (mapping.dino_class_name.empty())
+                continue;
+
+            mapping.dino_class = FindLoadedClass(mapping.dino_class_name);
+
+            if (!mapping.dino_class)
+            {
+                WriteLog("[WARN] Dino class not loaded/found: " + mapping.dino_class_name, true);
+                continue;
+            }
 
             for (const auto& jrule : jmap.value("Rules", json::array()))
             {
@@ -346,18 +344,36 @@ namespace KBDHybridBridge
                 rule.trigger = jrule.value("Trigger", "Always");
 
                 for (const auto& jbuff : jrule.value("Buffs", json::array()))
-                    rule.buffs.emplace_back(jbuff.get<std::string>());
+                {
+                    BuffSpec spec;
+                    spec.name = jbuff.get<std::string>();
+                    spec.cls = FindLoadedClass(spec.name);
+
+                    if (!spec.cls)
+                    {
+                        WriteLog("[WARN] Buff class not loaded/found: " + spec.name, true);
+                        continue;
+                    }
+
+                    rule.buffs.emplace_back(std::move(spec));
+                }
 
                 if (!rule.buffs.empty())
                     mapping.rules.emplace_back(std::move(rule));
             }
 
-            if (!mapping.dino_class.empty() && !mapping.rules.empty())
+            if (!mapping.rules.empty())
                 new_mappings.emplace_back(std::move(mapping));
         }
 
         mappings = std::move(new_mappings);
-        WriteLog("[CONFIG] loaded " + std::to_string(mappings.size()) + " hybrid mappings");
+
+        mapping_by_class.clear();
+        for (size_t i = 0; i < mappings.size(); ++i)
+            mapping_by_class[mappings[i].dino_class] = i;
+
+        seconds_since_scan = 0;
+        WriteLog("[CONFIG] loaded " + std::to_string(mappings.size()) + " hybrid mappings", true);
     }
 
     void ReloadCommand(APlayerController*, FString*, bool)
@@ -369,7 +385,7 @@ namespace KBDHybridBridge
         }
         catch (const std::exception& e)
         {
-            WriteLog(std::string("[ERROR] reload failed: ") + e.what());
+            WriteLog(std::string("[ERROR] reload failed: ") + e.what(), true);
         }
     }
 
@@ -386,7 +402,7 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().AddConsoleCommand("KBDHybridBridge.Reload", &ReloadCommand);
         ArkApi::GetCommands().AddConsoleCommand("KBDHybridBridge.Scan", &ScanCommand);
 
-        WriteLog("[LOAD] KBDHybridBridge loaded");
+        WriteLog("[LOAD] KBDHybridBridge v0.5 loaded", true);
     }
 
     void Unload()
@@ -395,7 +411,7 @@ namespace KBDHybridBridge
         ArkApi::GetCommands().RemoveConsoleCommand("KBDHybridBridge.Reload");
         ArkApi::GetCommands().RemoveConsoleCommand("KBDHybridBridge.Scan");
 
-        WriteLog("[UNLOAD] KBDHybridBridge unloaded");
+        WriteLog("[UNLOAD] KBDHybridBridge unloaded", true);
     }
 }
 

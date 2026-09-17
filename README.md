@@ -1,246 +1,79 @@
-# KBDHybridBridge v0.4 (ASE ArkApi)
+# KBDHybridBridge v0.5 (ASE ArkApi)
 
-This is a server-side compatibility bridge for:
+This build is a performance cleanup plus a costume-slot detection fix.
 
-- Kraken's Better Dinos (KBD) — Workshop 1565015734
-- Sid's Hybrids — Workshop 2212177129
+## Why v0.4 could lag
 
-## What this version does
+The old build did three expensive things every second:
 
-The plugin scans live dinos and applies **real KBD buff classes** to configured Sid hybrids.
+1. Scanned every live dino in the world.
+2. Searched the entire Unreal object table again for each configured buff.
+3. Wrote repeated "Reins found" messages to disk.
 
-It does **not** fake KBD with permanent speed/stamina multipliers.
+v0.5 changes that:
 
-For Valyrian Reins rules it finds the actual Reins item (either directly equipped as a costume or used as the skin on the equipped saddle) and passes that item into `APrimalBuff::StaticAddBuff`. This is important because KBD can continue to use the Reins item itself for durability/quality-dependent behavior.
+- Default scan interval is 5 seconds.
+- Buff and dino UClass pointers are resolved once at config load/reload and cached.
+- Mapped dino matching uses a hash lookup.
+- Repeated item-detection logging is removed.
+- Debug logging defaults to false.
 
-When the Reins are removed, the injected KBD Reins buff is deactivated.
+## Costume-slot detection
 
-The first mapping is the one we have already proven manually:
+ASE exposes InventoryItems, EquippedItems, and ItemSlots separately.
 
-    Argentjara_Character_BP_C
-      -> Buff_ValyrianReins_Argent_C
+v0.5 checks:
+- EquippedItems
+- ItemSlots
+- InventoryItems
 
-Manual test already confirmed that `ForceGiveBuff Buff_ValyrianReins_Argent 1`
-on Argentjara adds the KBD buff and increases stamina.
+For InventoryItems, a direct Valyrian Reins item only counts when ARK marks it as equipped (`bEquippedItem`) or it is skinned onto another item. This is intended to catch the dino Costume slot without treating loose Reins in inventory as active.
 
-## Mixed-parent support
+## Current mapping
 
-The engine is intentionally generic. A hybrid may receive multiple buffs under one rule:
+Argentjara receives both proven parent-specific KBD Reins buffs while Reins are equipped:
 
-```json
-{
-  "DinoClass": "Argentjara_Character_BP_C",
-  "Parents": ["Argentavis", "Tapejara"],
-  "Rules": [
-    {
-      "Trigger": "ValyrianReins",
-      "Buffs": [
-        "Buff_ValyrianReins_Argent_C",
-        "PUT_THE_CONFIRMED_TAPEJARA_BUFF_CLASS_HERE"
-      ]
-    }
-  ]
-}
-```
+- Buff_ValyrianReins_Argent_C
+- Buff_ValyrianReins_Tapejara_C
 
-The same format can be used for Vulcanotavis, Nanogryphus, and the rest of Sid's hybrids.
+## Hot reload
 
-Supported triggers in v0.1:
+With ArkAPI automatic plugin reloading already enabled:
 
-- `ValyrianReins` — buff is active only while actual Valyrian Reins are equipped/applied to saddle.
-- `Always` — buff is kept active on that hybrid. Use this only for a confirmed KBD parent/base buff that is supposed to be intrinsic.
+1. Build the new DLL.
+2. Upload it next to the live plugin as:
 
-## Install on server after building
+   KBDHybridBridge.dll.ArkApi
 
-ArkApi expects:
+3. Wait for ArkAPI to consume the `.ArkApi` replacement.
+4. No full server restart is required.
 
-    ShooterGame/Binaries/Win64/ArkApi/Plugins/KBDHybridBridge/
-        KBDHybridBridge.dll
-        PluginInfo.json
-        config.json
+## Test
 
-The folder name and DLL name must match.
+With Valyrian Reins in the Argentjara Costume slot, wait up to 5 seconds then:
 
-Restart the server after installing.
-
-### Useful server console commands
-
-    KBDHybridBridge.Reload
-    KBDHybridBridge.Scan
-
-Debug output is written to:
-
-    ArkApi/Plugins/KBDHybridBridge/KBDHybridBridge.log
-
-## First test
-
-1. Remove the manually-forced Reins buff first:
-
-       cheat ForceGiveBuff Buff_ValyrianReins_Argent 0
-
-2. Install/restart with this plugin.
-3. Put Valyrian Reins on an Argentjara.
-4. Wait 1–2 seconds.
-5. Ride it and run:
-
-       cheat ListMyBuffs
+    cheat ListMyBuffs
 
 Expected:
+- Buff_ValyrianReins_Argent_C_#
+- Buff_ValyrianReins_Tapejara_C_#
 
-    Buff_ValyrianReins_Argent_C_#
+Remove the Reins, wait up to 5 seconds, and those two injected buffs should disappear.
 
-and KBD may also create its BD manager buff, as your manual test did.
+## Immediate rollback if a test build causes lag
 
-6. Remove the Reins.
-7. Wait 1–2 seconds and run `ListMyBuffs` again. The injected Argent Reins buff should be gone.
+Edit plugin config.json:
 
-## Important current limitation
+    "Enabled": false
 
-This package contains the **bridge engine**, but only the exact Argentavis Reins buff is populated because that is the only KBD parent-specific buff asset name we have positively identified and tested so far.
-
-For each KBD parent we want to support, get the exact buff names from a normal KBD creature using `ListMyBuffs`, then add those names to `config.json`. No DLL recompile is needed to add mappings/buffs.
-
-For Argentjara's Tapejara half, put Valyrian Reins on a normal Tapejara and run:
-
-    cheat ListMyBuffs
-
-Then add the Tapejara-specific Reins buff class to the same `Buffs` array and run:
+Then run:
 
     KBDHybridBridge.Reload
 
-## Building
+The timer remains registered, but the plugin immediately stops world scans and buff processing. No full server restart is needed.
 
-This source targets the ASE Ark Server API, not ASA.
+## Tuning
 
-The project expects the official AseApi repository at:
+After detection is confirmed, `ScanEverySeconds` can be raised to 10 or 15 for even lower overhead.
 
-    extern/AseApi/
-
-with:
-- headers under `extern/AseApi/version/Core/Public`
-- `ArkApi.lib` under `extern/AseApi/out_lib`
-
-The included GitHub Actions workflow checks out AseApi and builds the x64 Release DLL automatically.
-
-If building locally, use Visual Studio 2022 with the C++ desktop workload, clone ArkServerApi/AseApi into `extern/AseApi`, then build `KBDHybridBridge.sln` as `Release | x64`.
-
-## Safety
-
-This is an experimental compatibility plugin. Back up the world before first use. The v0.1 config deliberately targets only Argentjara until more KBD buff asset names are verified.
-
-
-## v0.2 verified Argentjara parent mapping
-
-Observed on a normal KBD Argentavis:
-- `BD_BuffManager_C`
-- `Buff_Flyers_C`
-- `Buff_ValyrianReins_Argent_C`
-
-Observed on a normal KBD Tapejara:
-- `BD_BuffManager_C`
-- `Buff_Flyers_Tapejara_C`
-- `Buff_ValyrianReins_Tapejara_C`
-
-The Argentjara mapping now applies:
-- `Buff_Flyers_C` always
-- `Buff_Flyers_Tapejara_C` always
-- `Buff_ValyrianReins_Argent_C` only while actual Valyrian Reins are equipped
-- `Buff_ValyrianReins_Tapejara_C` only while actual Valyrian Reins are equipped
-
-The bridge deliberately does NOT inject `BD_BuffManager_C` directly. The parent KBD buffs should create/use the manager themselves, as seen in the manual Argentjara test.
-
-### Recommended manual dual-parent proof before relying on the plugin
-
-While riding Argentjara:
-
-    cheat ForceGiveBuff Buff_Flyers 1
-    cheat ForceGiveBuff Buff_Flyers_Tapejara 1
-    cheat ForceGiveBuff Buff_ValyrianReins_Argent 1
-    cheat ForceGiveBuff Buff_ValyrianReins_Tapejara 1
-    cheat ListMyBuffs
-
-Expected KBD-related entries include:
-
-    BD_BuffManager_C_#
-    Buff_Flyers_C_#
-    Buff_Flyers_Tapejara_C_#
-    Buff_ValyrianReins_Argent_C_#
-    Buff_ValyrianReins_Tapejara_C_#
-
-If any behavior is obviously broken with both base flyer buffs together, remove the relevant manual test buff and disable it from the `Always` rule in config.json before deploying broadly.
-
-
-## v0.3 test result
-
-Manual dual-parent test on Argentjara succeeded for the two Valyrian Reins buffs simultaneously:
-
-- `BD_BuffManager_C`
-- `Buff_ValyrianReins_Argent_C`
-- `Buff_ValyrianReins_Tapejara_C`
-
-The generic/base flyer buffs:
-
-- `Buff_Flyers_C`
-- `Buff_Flyers_Tapejara_C`
-
-did not remain on Argentjara during the test, so v0.3 no longer tries to inject them automatically.
-
-This is intentional. v0.3's first goal is a narrow, proven behavior:
-
-**Actual Valyrian Reins equipped -> apply all verified parent-specific KBD Reins buffs.  
-Reins removed -> remove the injected Reins buffs.**
-
-That gives Argentjara the union of the verified Argentavis + Tapejara Reins behavior without hard-coded stat multipliers.
-
-### Current proven mapping
-
-Argentjara:
-- Argentavis -> `Buff_ValyrianReins_Argent_C`
-- Tapejara -> `Buff_ValyrianReins_Tapejara_C`
-
-### Expansion pattern
-
-For another Sid hybrid:
-1. Identify its vanilla parents.
-2. Put Valyrian Reins on each corresponding normal KBD creature.
-3. Run `cheat ListMyBuffs`.
-4. Record the exact parent-specific `Buff_ValyrianReins_*_C` class.
-5. Add those buff classes to that hybrid's `ValyrianReins` rule in `config.json`.
-6. Reload the bridge.
-
-No DLL recompile is required for new config-only mappings.
-
-
-## v0.4 costume-slot detection fix
-
-The first live automatic test showed an Argentjara with Valyrian Reins visibly in the creature Costume slot but neither parent Reins buff was applied.
-
-v0.3 only searched `UPrimalInventoryComponent.EquippedItems`.
-
-ASE exposes `EquippedItems`, `ItemSlots`, and `InventoryItems` separately. v0.4 now checks:
-
-1. `EquippedItems` — direct Reins or Reins skin on an equipped item.
-2. `ItemSlots` — direct Reins or Reins skin; this is the new path intended to catch creature Costume-slot equipment.
-3. `InventoryItems` — diagnostic only by default.
-
-The log will now say where the Reins were found, for example:
-
-    [REINS] found directly in ItemSlots: PrimalItemCostume_ValyrianReins_C
-
-If the server still shows no parent buffs, inspect:
-
-    ArkApi/Plugins/KBDHybridBridge/KBDHybridBridge.log
-
-If the log says:
-
-    [REINS] Reins exists in InventoryItems: ...
-
-but never finds it in EquippedItems or ItemSlots, temporarily set:
-
-    "InventoryReinsFallback": true
-
-in config.json and run:
-
-    KBDHybridBridge.Reload
-
-That fallback is ONLY for diagnosis because a loose Reins item sitting in the dino's inventory would then count as equipped.
+A later version can move to inventory/equip hooks so no world polling is required at all.
